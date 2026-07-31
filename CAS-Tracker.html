@@ -78,7 +78,7 @@
   .pp{font-family:"Consolas",monospace;font-size:13px;color:var(--ink);background:#12180f;
     border:1px solid var(--line);border-radius:4px;padding:2px 7px;white-space:nowrap}
   .pp b{color:var(--amber2);font-weight:700;margin-right:4px}
-  .pp.empty{color:#e8846f} .pp.empty b{color:#e8846f}
+  .pp.ppzero{color:#e8846f} .pp.ppzero b{color:#e8846f}
   .gunstate{font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px}
   .g-full{color:#8fe07a;background:#173017}.g-partial{color:#f0c874;background:#3a2f12}.g-winchester{color:#e8846f;background:#2a1712}
   .flight-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
@@ -583,7 +583,7 @@ function flightCard(f){
     const tot=ordTotal(L), maxTot=ordMax(L);
     const cls = tot===0?'zero':(tot<=maxTot*0.34?'low':'');
     const perStr = showPer && L.perPlane.length>1
-      ? `<span class="perplane">${L.perPlane.map((c,pi)=>`<span class="pp${c===0?' empty':''}"><b>A${pi+1}</b>${c}</span>`).join('')}</span>` : '';
+      ? `<span class="perplane">${L.perPlane.map((c,pi)=>`<span class="pp${c===0?' ppzero':''}"><b>A${pi+1}</b>${c}</span>`).join('')}</span>` : '';
     h += `<div class="wpn"><span class="name">${esc(L.name)}</span>
       ${perStr}
       <span class="cnt ${cls}">${tot}/${maxTot}</span>
