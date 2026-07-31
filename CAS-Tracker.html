@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arma 3 CAS / FAC Tracker</title>
+<style>
+  :root{
+    --bg:#0f1410; --panel:#161d16; --panel2:#1e271d; --line:#2c3a2b;
+    --ink:#d6e0cf; --muted:#8fa088; --amber:#e0a83c; --amber2:#f0c874;
+    --green:#5fae4a; --red:#c8503a; --blue:#4a8bae; --purple:#9a6fae;
+    --shadow:0 2px 8px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.4}
+  h1,h2,h3{margin:0;font-weight:600}
+  .mono{font-family:"Consolas","Courier New",monospace}
+  button{font-family:inherit;font-size:13px;cursor:pointer;border:1px solid var(--line);
+    background:var(--panel2);color:var(--ink);padding:6px 10px;border-radius:4px}
+  button:hover{border-color:var(--amber);color:var(--amber2)}
+  button.primary{background:#3a2f12;border-color:var(--amber);color:var(--amber2);font-weight:600}
+  button.danger{border-color:#5a2a20}
+  button.danger:hover{border-color:var(--red);color:#e8846f;background:#2a1712}
+  button.small{padding:3px 7px;font-size:12px}
+  select,input,textarea{font-family:inherit;font-size:13px;background:#0c110b;color:var(--ink);
+    border:1px solid var(--line);border-radius:4px;padding:5px 7px}
+  input[type=number]{width:70px}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:2px}
+  header{background:linear-gradient(#1a231a,#131a13);border-bottom:2px solid var(--amber);
+    padding:10px 16px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;box-shadow:var(--shadow)}
+  header h1{font-size:17px;letter-spacing:.5px;color:var(--amber2)}
+  header h1 small{color:var(--muted);font-weight:400;font-size:12px;letter-spacing:0}
+  .wx{display:flex;align-items:center;gap:8px}
+  .ctrl{display:flex;align-items:center;gap:8px;margin-left:auto}
+  .wx .pill{padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700;letter-spacing:.5px}
+  nav{display:flex;gap:2px;background:#0c110b;padding:0 12px;border-bottom:1px solid var(--line)}
+  nav button{border:none;border-bottom:3px solid transparent;background:none;border-radius:0;
+    padding:10px 16px;color:var(--muted);font-size:13px;font-weight:600}
+  nav button:hover{color:var(--ink)}
+  nav button.active{color:var(--amber2);border-bottom-color:var(--amber)}
+  nav .badge{display:inline-block;min-width:18px;padding:0 5px;margin-left:6px;border-radius:9px;
+    background:#3a2f12;color:var(--amber2);font-size:11px;text-align:center}
+  main{padding:16px;max-width:1400px;margin:0 auto}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .col{flex:1;min-width:260px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    box-shadow:var(--shadow);margin-bottom:12px}
+  .card .hd{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel2);border-radius:6px 6px 0 0}
+  .card .bd{padding:12px}
+  .muted{color:var(--muted)}
+  .tag{display:inline-block;padding:1px 7px;border-radius:3px;font-size:11px;font-weight:700;
+    letter-spacing:.4px;border:1px solid var(--line)}
+  .tag.fw{color:#8fc0d8;border-color:#2c4b57}
+  .tag.rw{color:#c8b070;border-color:#5a4c28}
+  .tag.us{color:#7db0d0;border-color:#2c4b57}
+  .tag.vnaf{color:#e0b060;border-color:#5a4620}
+  .tag.aaa{color:#e8846f;border-color:#5a2a20;background:#2a1712}
+  .tag.ctl{color:#7fd6c8;border-color:#2c5751}
+  .status{font-weight:700;letter-spacing:.4px;font-size:12px;padding:2px 8px;border-radius:3px}
+  .s-available{color:#b8b8b8;background:#242424}
+  .s-inbound{color:#f0c874;background:#3a2f12}
+  .s-checkin{color:#7fd6c8;background:#12332e}
+  .s-onstation{color:#8fe07a;background:#173017}
+  .s-departed,.s-rtb{color:#8fc0d8;background:#152833}
+  .s-shotdown,.s-kia{color:#e8846f;background:#2a1712}
+  .s-aborted,.s-diverted{color:#c0a0d0;background:#241a2a}
+  .clock{font-family:"Consolas",monospace;font-size:26px;font-weight:700;letter-spacing:1px}
+  .clock.warn{color:var(--amber2)} .clock.crit{color:#e8846f;animation:blink 1s step-start infinite}
+  @keyframes blink{50%{opacity:.4}}
+  .wpn{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed #223021}
+  .wpn:last-child{border-bottom:none}
+  .wpn .name{flex:1}
+  .cnt{font-family:"Consolas",monospace;font-weight:700;min-width:52px;text-align:right}
+  .cnt.low{color:var(--amber2)} .cnt.zero{color:#e8846f}
+  .gunstate{font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px}
+  .g-full{color:#8fe07a;background:#173017}.g-partial{color:#f0c874;background:#3a2f12}.g-winchester{color:#e8846f;background:#2a1712}
+  .flight-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;
+    justify-content:center;padding:40px 16px;z-index:50;overflow:auto}
+  .modal{background:var(--panel);border:1px solid var(--amber);border-radius:8px;
+    width:100%;max-width:560px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+  .modal .hd{padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel2);
+    border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:center}
+  .modal .bd{padding:16px}
+  .modal .ft{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .field{margin-bottom:10px}
+  .field input,.field select,.field textarea{width:100%}
+  .suggest{background:#12180f;border:1px solid var(--line);border-radius:6px;padding:12px;margin:10px 0}
+  .suggest .big{font-size:20px;font-weight:700}
+  .empty{color:var(--muted);text-align:center;padding:30px;font-style:italic}
+  .logline{padding:5px 8px;border-bottom:1px solid #1b241a;display:flex;gap:10px;font-size:13px}
+  .logline:hover{background:var(--panel2)}
+  .logline .t{color:var(--muted);font-family:"Consolas",monospace;font-size:12px;white-space:nowrap}
+  .logline .who{color:var(--amber2);font-weight:600;white-space:nowrap}
+  .kv{display:flex;gap:6px;font-size:13px;margin:2px 0}
+  .kv b{color:var(--muted);font-weight:600;min-width:74px;display:inline-block}
+  .flex{display:flex;align-items:center;gap:8px}
+  .sp{flex:1}
+  .libitem{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1b241a;flex-wrap:wrap}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#243024;
+    border:1px solid var(--amber);color:var(--amber2);padding:10px 18px;border-radius:6px;
+    box-shadow:var(--shadow);z-index:99;opacity:0;transition:opacity .2s}
+  .toast.show{opacity:1}
+  hr{border:none;border-top:1px solid var(--line);margin:12px 0}
+  .chip{cursor:pointer;padding:4px 10px;border:1px solid var(--line);border-radius:14px;font-size:12px}
+  .chip.on{background:#3a2f12;border-color:var(--amber);color:var(--amber2)}
+  .etaBox{display:flex;justify-content:space-between;gap:10px;margin:7px 0;padding:6px 10px;
+    background:#12180f;border:1px solid var(--line);border-radius:5px;font-size:12px;color:var(--muted)}
+  .etaBox b{color:var(--amber2);font-size:15px}
+  .tuneGrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 22px}
+  .tuneRow{margin:7px 0}
+  .tuneRow label{font-size:12px;color:var(--muted)}
+  .tuneRow label b{color:var(--amber2)}
+  .tuneRow input[type=range]{width:100%;accent-color:var(--amber);margin-top:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>ARMA 3 — CAS / FAC TRACKER <small>on-call immediate air support</small></h1>
+  <div class="ctrl">
+    <label style="margin:0">CONTROL AGENCY</label>
+    <select id="ctrlSel" onchange="app.setControl(this.value)">
+      <option>Monkey Mountain</option>
+      <option>Signal Hill</option>
+      <option>Sandy Control</option>
+      <option>Pedro Control</option>
+    </select>
+  </div>
+  <div class="wx">
+    <label style="margin:0">WEATHER / VIS</label>
+    <select id="wxSel" onchange="app.setWeather(this.value)">
+      <option value="good">Clear — Good vis</option>
+      <option value="hazy">Hazy — Moderate</option>
+      <option value="poor">Overcast — Poor</option>
+      <option value="marginal">Marginal — Low ceiling</option>
+    </select>
+    <span id="wxPill" class="pill"></span>
+  </div>
+</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<div id="modalRoot"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+//=================================================================
+//  DEFAULT LIBRARY (editable in-app, persisted to localStorage)
+//=================================================================
+const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+const CONTROLS = ['Monkey Mountain','Signal Hill','Sandy Control','Pedro Control'];
+const SKILLS = {
+  rookie:{label:'Rookie', v:0.38}, regular:{label:'Regular', v:0.55},
+  veteran:{label:'Veteran', v:0.74}, ace:{label:'Ace', v:0.90}
+};
+const WEATHER = {
+  good:{label:'GOOD', mod:0, color:'#173017', ink:'#8fe07a'},
+  hazy:{label:'MODERATE', mod:-0.08, color:'#3a2f12', ink:'#f0c874'},
+  poor:{label:'POOR', mod:-0.16, color:'#33210f', ink:'#e0a83c'},
+  marginal:{label:'MARGINAL', mod:-0.26, color:'#2a1712', ink:'#e8846f'}
+};
+
+// All generation + accuracy parameters — exposed as sliders in the TUNING tab.
+const DEFAULT_TUNING = {
+  // timing & availability
+  etaMin:3, etaMax:15,             // minutes to arrive overhead
+  stnMin:4, stnMax:45,             // hard min/max minutes on station
+  lowFuelChance:40,                // % of flights that arrive low on fuel
+  lowFuelMin:0.45, lowFuelMax:0.70,// fuel factor applied to station time when low
+  // composition
+  fwBias:55,                       // % chance an "Any" option is fixed-wing (rest rotary)
+  vnafChance:35,                   // % chance a VNAF-capable flight is local
+  acMin:1, acMode:2, acMax:3,      // aircraft per flight (min / most-common / max)
+  pctFull:45, pctPartial:35,       // % full / % partial load (remainder = 'other')
+  // pilot skill (base hit-chance %, before weapon/weather)
+  skRookie:38, skRegular:55, skVeteran:74, skAce:90,
+  vnafPenalty:12,                  // percentage points off skill for local pilots
+  // weather effect on hit chance (percentage points)
+  wxGood:0, wxHazy:-8, wxPoor:-16, wxMarginal:-26,
+  // engagement & reliability
+  aaaPenalty:15,                   // pp off hit chance while under AAA
+  hungChance:3.0, dudChance:4.5,   // % malfunction on release
+  missDistBase:120, missDistFloor:8// miss distance model (metres)
+};
+
+// weapon catalog: acc = intrinsic delivery accuracy; area = forgiving/lenient miss
+const DEFAULT_WEAPONS = {
+  mk81:{name:'Mk-81 250lb', cat:'bomb', acc:0.55, pattern:'single'},
+  mk82:{name:'Mk-82 500lb', cat:'bomb', acc:0.55, pattern:'single'},
+  snake:{name:'Mk-82 Snakeye', cat:'bomb', acc:0.70, pattern:'pair'},
+  mk83:{name:'Mk-83 1000lb', cat:'bomb', acc:0.50, pattern:'single'},
+  mk84:{name:'Mk-84 2000lb', cat:'bomb', acc:0.48, pattern:'single'},
+  m117:{name:'M117 750lb', cat:'bomb', acc:0.52, pattern:'single'},
+  napalm:{name:'Napalm (Mk-77/BLU)', cat:'napalm', acc:0.60, area:true, pattern:'single'},
+  cbu:{name:'CBU-24/25 Cluster', cat:'cbu', acc:0.58, area:true, pattern:'single'},
+  ffar:{name:'2.75" FFAR (LAU-3)', cat:'rocket', acc:0.44, pattern:'salvo'},
+  zuni:{name:'5" Zuni (LAU-10)', cat:'rocket', acc:0.50, pattern:'pair'},
+  gun20:{name:'20mm Cannon', cat:'gun', acc:0.76, pattern:'burst'},
+  gunpod:{name:'20mm Gun Pod (SUU)', cat:'gun', acc:0.70, pattern:'burst'},
+  minigun:{name:'7.62 Minigun', cat:'gun', acc:0.70, pattern:'burst'},
+  hrocket:{name:'2.75" Rocket Pods', cat:'rocket', acc:0.50, pattern:'salvo'},
+  gl40:{name:'40mm Grenade', cat:'gun', acc:0.58, pattern:'burst'}
+};
+
+// airframes: role strike=goes in the on-call pool; fac=marker/recon.
+// vnaf:true => can appear as South Vietnamese AF (lower skill).
+// crew for info. loadout: full-load per FLIGHT-of-one; qty aggregated across a section at generation.
+const DEFAULT_AIRFRAMES = [
+  {id:'a1', name:'A-1 Skyraider', type:'FW', role:'strike', vnaf:true, crew:1,
+    load:[{w:'mk82',max:4},{w:'napalm',max:2},{w:'ffar',max:38},{w:'gun20',gun:true}], stn:[18,35]},
+  {id:'a4', name:'A-4 Skyhawk', type:'FW', role:'strike', vnaf:false, crew:1,
+    load:[{w:'snake',max:6},{w:'zuni',max:8},{w:'gun20',gun:true}], stn:[12,25]},
+  {id:'a6', name:'A-6 Intruder', type:'FW', role:'strike', vnaf:false, crew:2,
+    load:[{w:'mk82',max:12},{w:'snake',max:10},{w:'mk83',max:4}], stn:[15,30]},
+  {id:'a7', name:'A-7 Corsair II', type:'FW', role:'strike', vnaf:false, crew:1,
+    load:[{w:'mk82',max:8},{w:'cbu',max:6},{w:'gun20',gun:true}], stn:[15,28]},
+  {id:'f100', name:'F-100 Super Sabre', type:'FW', role:'strike', vnaf:false, crew:1,
+    load:[{w:'mk82',max:4},{w:'napalm',max:2},{w:'ffar',max:19},{w:'gun20',gun:true}], stn:[10,20]},
+  {id:'f105', name:'F-105 Thunderchief', type:'FW', role:'strike', vnaf:false, crew:1,
+    load:[{w:'m117',max:6},{w:'mk82',max:5},{w:'gun20',gun:true}], stn:[8,18]},
+  {id:'f4', name:'F-4 Phantom II', type:'FW', role:'strike', vnaf:false, crew:2,
+    load:[{w:'mk82',max:8},{w:'cbu',max:6},{w:'zuni',max:8},{w:'gunpod',gun:true}], stn:[10,20]},
+  {id:'a37', name:'A-37 Dragonfly', type:'FW', role:'strike', vnaf:true, crew:1,
+    load:[{w:'mk81',max:4},{w:'napalm',max:2},{w:'ffar',max:14},{w:'minigun',gun:true}], stn:[12,24]},
+  {id:'f5', name:'F-5 Freedom Fighter', type:'FW', role:'strike', vnaf:true, crew:1,
+    load:[{w:'mk82',max:4},{w:'ffar',max:19},{w:'gun20',gun:true}], stn:[10,20]},
+  {id:'ov10', name:'OV-10 Bronco', type:'FW', role:'strike', vnaf:false, crew:2,
+    load:[{w:'ffar',max:28},{w:'minigun',gun:true}], stn:[20,45], fac:true},
+  {id:'o2', name:'O-2 Skymaster (FAC)', type:'FW', role:'fac', vnaf:false, crew:1,
+    load:[{w:'ffar',max:14}], stn:[30,60], fac:true},
+  {id:'uh1c', name:'UH-1C Gunship', type:'RW', role:'strike', vnaf:true, crew:4,
+    load:[{w:'hrocket',max:14},{w:'minigun',gun:true},{w:'gl40',max:150}], stn:[15,30]},
+  {id:'uh1d', name:'UH-1D Bushranger', type:'RW', role:'strike', vnaf:true, crew:4,
+    load:[{w:'hrocket',max:14},{w:'minigun',gun:true}], stn:[15,30]},
+  {id:'ah1', name:'AH-1G Cobra', type:'RW', role:'strike', vnaf:false, crew:2,
+    load:[{w:'hrocket',max:38},{w:'minigun',gun:true},{w:'gl40',max:300}], stn:[15,28]},
+  {id:'ach47', name:'ACH-47 "Guns-A-Go-Go"', type:'RW', role:'strike', vnaf:false, crew:5,
+    load:[{w:'hrocket',max:38},{w:'gun20',gun:true},{w:'minigun',gun:true},{w:'gl40',max:300}], stn:[12,24]},
+  {id:'oh6', name:'OH-6A Loach (Scout)', type:'RW', role:'strike', vnaf:false, crew:2,
+    load:[{w:'minigun',gun:true},{w:'hrocket',max:7}], stn:[20,40], fac:true}
+];
+
+//=================================================================
+//  STATE + PERSISTENCE
+//=================================================================
+const LS_KEY = 'arma3_cas_tracker_v1';
+let state = {
+  weather:'good',
+  control:'Monkey Mountain',
+  flights:[],
+  log:[],
+  seq:1,
+  tuning:structuredClone(DEFAULT_TUNING),
+  library:{ weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES) }
+};
+let ui = { tab:'ops' };
+
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ console.warn(e); } }
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const d = JSON.parse(raw); if(d && d.library) state = d; }
+  }catch(e){ console.warn('load failed', e); }
+  if(!state.library.weapons) state.library.weapons = structuredClone(DEFAULT_WEAPONS);
+  if(!state.library.airframes) state.library.airframes = structuredClone(DEFAULT_AIRFRAMES);
+  migrateState();
+}
+// migrate older saved/imported data forward (defaults + per-plane ordnance model)
+function migrateState(){
+  state.tuning = Object.assign(structuredClone(DEFAULT_TUNING), state.tuning||{});
+  if(!state.control) state.control = 'Monkey Mountain';
+  (state.flights||[]).forEach(f=>{
+    (f.loadout||[]).forEach(L=>{
+      if(!L.perPlane){          // convert flat {count,max} → per-aircraft array
+        const n = f.numAircraft || 1;
+        const planeMax = L.max!=null ? Math.max(0,Math.round(L.max/n)) : (L.count||0);
+        let rem = L.count!=null ? L.count : planeMax*n;
+        L.planeMax = planeMax; L.perPlane = [];
+        for(let i=0;i<n;i++){ const g=Math.min(planeMax, Math.max(0,rem)); L.perPlane.push(g); rem-=g; }
+        if(rem>0 && L.perPlane.length) L.perPlane[0]+=rem;
+        delete L.count; delete L.max;
+      }
+    });
+  });
+}
+function ordTotal(L){ return (L.perPlane||[]).reduce((s,c)=>s+c,0); }
+function ordMax(L){ return (L.planeMax||0)*((L.perPlane||[]).length||1); }
+function W(id){ return state.library.weapons[id] || {name:id, cat:'bomb', acc:0.5, pattern:'single'}; }
+function T(){ return state.tuning; }
+function skillVal(k){ const m={rookie:T().skRookie,regular:T().skRegular,veteran:T().skVeteran,ace:T().skAce};
+  return (m[k]!=null?m[k]:55)/100; }
+function wxMod(k){ const m={good:T().wxGood,hazy:T().wxHazy,poor:T().wxPoor,marginal:T().wxMarginal};
+  return (m[k]||0)/100; }
+function pickLoadState(){ const t=T(); const r=Math.random()*100;
+  if(r < t.pctFull) return 'full';
+  if(r < t.pctFull + t.pctPartial) return 'partial';
+  return 'other'; }
+
+//=================================================================
+//  HELPERS
+//=================================================================
+const $ = s => document.querySelector(s);
+const rnd = (a,b)=> a + Math.random()*(b-a);
+const rndInt = (a,b)=> Math.floor(rnd(a,b+1));
+const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+const clamp = (x,a,b)=> Math.max(a,Math.min(b,x));
+// triangular distribution: min a, mode c, max b — clusters around the median
+function triangular(a,c,b){ if(b<=a) return a; c=clamp(c,a,b);
+  const u=Math.random(), fc=(c-a)/(b-a);
+  return u<fc ? a+Math.sqrt(u*(b-a)*(c-a)) : b-Math.sqrt((1-u)*(b-a)*(b-c)); }
+// weighted random pick — airframe.weight (default 1) sets relative commonness; weight 0 = never
+function weightedPick(arr){
+  const tot=arr.reduce((s,a)=>s+(a.weight>0?a.weight:(a.weight==null?1:0)),0);
+  if(tot<=0) return pick(arr);
+  let r=Math.random()*tot;
+  for(const a of arr){ const w=(a.weight>0?a.weight:(a.weight==null?1:0)); r-=w; if(r<=0) return a; }
+  return arr[arr.length-1];
+}
+function fmtClock(sec){ sec=Math.max(0,Math.round(sec)); const m=Math.floor(sec/60), s=sec%60;
+  return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
+function nowStr(){ const d=new Date(); return d.toTimeString().slice(0,8); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+let toastT=null;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
+const DIGIT_WORDS = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE'];
+const CALLSIGN_WORDS = [
+  'VIPER','COBRA','RAPTOR','FALCON','HAWK','EAGLE','RAVEN','CONDOR','PHOENIX','TALON',
+  'KESTREL','OSPREY','JACKAL','WOLF','LYNX','PANTHER','JAGUAR','TIGER','MAMBA','SCORPION',
+  'HORNET','WASP','LOCUST','REAPER','BADGER','BISON','RHINO','COUGAR','BOBCAT','WOLVERINE',
+  'MIDNIGHT','NIGHTSKY','CARBON','IRON','STEEL','COBALT','CRIMSON','SABLE','ONYX','EMBER',
+  'ASHEN','FROST','STORM','THUNDER','LIGHTNING','TEMPEST','CYCLONE','MONSOON','SHADOW','PHANTOM',
+  'SPECTER','GHOST','WRAITH','GRIM','SAVAGE','ROGUE','OUTLAW','RENEGADE','BANDIT','MAVERICK',
+  'DRIFTER','NOMAD','GAMBIT','HAVOC','RAMPAGE','WARHOG','VENOM','DAGGER','SABRE','LANCE',
+  'JAVELIN','HAMMER','ANVIL','TRACER','SHRAPNEL','INFERNO','BLAZE','WILDFIRE','FIREBRAND','BRIMSTONE',
+  'GUNSMOKE','BAYONET','CLEAVER','HATCHET','MACHETE','COMET','METEOR','NOVA','PULSAR','QUASAR',
+  'ECLIPSE','SOLAR','LUNAR','ORBIT','VECTOR','ZENITH','APEX','SUMMIT','GRANITE','BOULDER',
+  'AVALANCHE','GLACIER','TUNDRA','CANYON','MESA','DIABLO','VOODOO','HOODOO','MOJO','RIOT',
+  'MUTINY','VENDETTA','RECKONING','VERDICT','WARDEN','SENTINEL','VANGUARD','VIGIL','MARSHAL','RANGER',
+  'RAIDER','MARAUDER','CORSAIR','BUCCANEER','PRIVATEER','COVEY','RAMROD','SANDY','HELLBORNE','GUNSLINGER',
+  'MUSTANG','FIREFLY','SPAD','HELLHOUND','WARLOCK','GARGOYLE','BASILISK','CHIMERA','HYDRA','GRIFFIN',
+  'KRAKEN','TITAN','ATLAS','ODIN','THOR','ARES','VULCAN','NEMESIS','VALKYRIE','SHARK',
+  'BROADSWORD','LONGBOW','CROSSBOW','HALBERD','TRIDENT','FLINTLOCK','MATCHLOCK','GRAPESHOT','CANISTER','MORTAR'
+];
+function spokenTwoDigit(){ return DIGIT_WORDS[rndInt(0,9)]+' '+DIGIT_WORDS[rndInt(0,9)]; }
+// returns {words, number} — unique full callsign, distinct root among active flights
+function makeCallsign(){
+  const activeRoots = new Set(state.flights
+    .filter(f=>['available','inbound','checkin','onstation'].includes(f.status)).map(f=>f.callsign));
+  const usedFull = new Set(state.flights.map(f=>f.callsign+' '+f.flightNo));
+  let relaxRoot = false;
+  for(let i=0;i<200;i++){
+    if(i===120) relaxRoot = true;                 // if pool is saturated, drop the distinct-root rule
+    const two = Math.random() < 0.5;
+    const w1 = pick(CALLSIGN_WORDS);
+    let w2 = null;
+    if(two){ w2 = pick(CALLSIGN_WORDS); if(w2===w1) continue; }
+    const words = two ? (w1+' '+w2) : w1;
+    if(!relaxRoot && activeRoots.has(words)) continue;
+    const number = spokenTwoDigit();
+    if(usedFull.has(words+' '+number)) continue;   // never an exact repeat this session
+    return {words, number};
+  }
+  return {words:pick(CALLSIGN_WORDS), number:spokenTwoDigit()}; // safety net (space is huge; unreachable in practice)
+}
+
+function logEvent(who, msg){
+  state.log.unshift({ id:state.seq++, t:Date.now(), ts:nowStr(), who, msg });
+  if(state.log.length>500) state.log.length=500;
+}
+
+//=================================================================
+//  FLIGHT GENERATION  (on-call divert: variable fuel/time & partial loads)
+//=================================================================
+function genFlight(opts={}){
+  const t = T();
+  const lib = state.library.airframes;
+  const strike = lib.filter(a=>a.role==='strike');
+  let pool;
+  if(opts.airframeId) pool = lib.filter(a=>a.id===opts.airframeId);
+  else if(opts.type==='FW') pool = strike.filter(a=>a.type==='FW');
+  else if(opts.type==='RW') pool = strike.filter(a=>a.type==='RW');
+  else {
+    // "Any": choose FW vs RW by the fixed-wing bias, then weight within that type
+    const fw = strike.filter(a=>a.type==='FW'), rw = strike.filter(a=>a.type==='RW');
+    if(fw.length && rw.length) pool = (Math.random()*100 < t.fwBias) ? fw : rw;
+    else pool = strike;
+  }
+  if(!pool || !pool.length) pool = strike.length ? strike : lib;
+  const af = weightedPick(pool);
+
+  const canVnaf = af.vnaf && opts.allowVnaf!==false;
+  const operator = (canVnaf && Math.random()*100 < t.vnafChance) ? 'VNAF' : 'US';
+  const skillPool = operator==='VNAF'
+    ? ['rookie','rookie','regular','regular','veteran']
+    : ['rookie','regular','regular','veteran','veteran','ace'];
+  const skill = pick(skillPool);
+
+  const acLo=Math.min(t.acMin,t.acMax), acHi=Math.max(t.acMin,t.acMax);
+  const acMode=clamp(t.acMode==null?Math.round((acLo+acHi)/2):t.acMode, acLo, acHi);
+  const numAircraft = clamp(Math.round(triangular(acLo, acMode, acHi)), acLo, acHi);
+
+  // fuel / playtime — diverted craft vary widely; sometimes low state
+  const [smin,smax] = af.stn || [12,25];
+  let base = rnd(smin, smax);
+  if(Math.random()*100 < t.lowFuelChance)
+    base *= rnd(Math.min(t.lowFuelMin,t.lowFuelMax), Math.max(t.lowFuelMin,t.lowFuelMax));
+  const stationMin = clamp(Math.round(base), Math.min(t.stnMin,t.stnMax), Math.max(t.stnMin,t.stnMax));
+  const etaMin = rndInt(Math.min(t.etaMin,t.etaMax), Math.max(t.etaMin,t.etaMax));
+
+  // ordnance state: full / partial (may have expended some on a prior tasking)
+  const loadState = pickLoadState();
+  const loadout = [];
+  let guns = null;
+  (af.load||[]).forEach(item=>{
+    const wd = W(item.w);
+    if(item.gun){
+      const gState = loadState==='full' ? 'full' : (loadState==='partial' ? pick(['full','partial']) : pick(['partial','winchester']));
+      guns = guns || [];
+      guns.push({ w:item.w, name:wd.name, state:gState });
+      return;
+    }
+    const planeMax = item.max;
+    const perPlane = [];
+    for(let p=0;p<numAircraft;p++){       // each aircraft loaded independently — planes may differ
+      let c = planeMax;
+      if(loadState==='partial') c = Math.round(planeMax * rnd(0.4,0.85));
+      else if(loadState==='other') c = Math.round(planeMax * rnd(0.15,0.55));
+      perPlane.push(Math.max(0, c));
+    }
+    loadout.push({ w:item.w, name:wd.name, cat:wd.cat, pattern:wd.pattern, acc:wd.acc, area:!!wd.area, planeMax, perPlane });
+  });
+
+  const cs = makeCallsign();
+  return {
+    id: state.seq++,
+    callsign: cs.words,
+    flightNo: cs.number,
+    airframeId: af.id, airframeName: af.name, type: af.type, fac:!!af.fac,
+    numAircraft, operator, skill, control: state.control,
+    etaMin, etaSec: etaMin*60,
+    stationMin, stationSec: stationMin*60, stationMax: stationMin*60,
+    loadState, loadout, guns,
+    status:'available', aaa:false, paused:false, notes:'',
+    createdAt:Date.now(), arrivedAt:null
+  };
+}
+
+function generateOptions(n, opts){
+  const out=[];
+  for(let i=0;i<n;i++){ const f=genFlight(opts); state.flights.push(f); out.push(f); }
+  logEvent(state.control,'Passed '+n+' CAS option(s) to FAC'+(opts.type?(' ('+opts.type+')'):''));
+  save(); render();
+}
+
+//=================================================================
+//  RELEASE / ACCURACY SUGGESTION  (tool suggests, GM finalises)
+//=================================================================
+function suggestOutcome(flight, wpn){
+  const t = T();
+  const skillV = skillVal(flight.skill) - (flight.operator==='VNAF' ? t.vnafPenalty/100 : 0);
+  const wmod = wxMod(state.weather);
+  const aaaMod = flight.aaa ? -(t.aaaPenalty/100) : 0;
+  const base = wpn.acc!=null ? wpn.acc : 0.5;
+  let pHit = clamp(base + (skillV-0.55)*0.7 + wmod + aaaMod, 0.05, 0.95);
+  if(wpn.area) pHit = clamp(pHit+0.10, 0.05, 0.96);
+
+  // malfunctions independent of aim
+  const r = Math.random();
+  const hungP = t.hungChance/100, dudP = t.dudChance/100;
+  if(r < hungP)          return { type:'hung', label:'HUNG ORDNANCE — no release', dist:0, card:'', pHit };
+  if(r < hungP+dudP)     return { type:'dud',  label:'DUD — released, failed to detonate', dist:0, card:'', pHit };
+
+  if(Math.random() < pHit){
+    return { type:'ontarget', label:'ON TARGET — good effect', dist:0, card:'', pHit };
+  }
+  // a miss: cardinal offset + distance, worse with lower accuracy
+  let dist = Math.round(((1-pHit)*t.missDistBase + t.missDistFloor) * rnd(0.5,1.4));
+  if(wpn.area) dist = Math.round(dist*0.6);
+  dist = Math.max(5, dist);
+  const card = pick(CARDINALS);
+  const type = dist>=90 ? 'wide' : 'miss';
+  const label = (type==='wide'?'WIDE — ':'MISS — ') + dist+'m '+card+' of target';
+  return { type, label, dist, card, pHit };
+}
+
+//=================================================================
+//  RENDER
+//=================================================================
+function render(){
+  renderNav(); renderWx(); renderControl();
+  const m = $('#main');
+  if(ui.tab==='ops') m.innerHTML = viewOps();
+  else if(ui.tab==='request') m.innerHTML = viewRequest();
+  else if(ui.tab==='tuning') m.innerHTML = viewTuning();
+  else if(ui.tab==='log') m.innerHTML = viewLog();
+  else if(ui.tab==='library') m.innerHTML = viewLibrary();
+  else if(ui.tab==='session') m.innerHTML = viewSession();
+}
+
+function renderNav(){
+  const active = state.flights.filter(f=>['inbound','checkin','onstation'].includes(f.status)).length;
+  const avail = state.flights.filter(f=>f.status==='available').length;
+  const tabs=[
+    ['ops','OPS BOARD', active],
+    ['request','REQUEST AIR', avail],
+    ['tuning','TUNING', 0],
+    ['log','AFTER-ACTION LOG', 0],
+    ['library','LIBRARY', 0],
+    ['session','SESSION', 0]
+  ];
+  $('#nav').innerHTML = tabs.map(([id,label,b])=>
+    `<button class="${ui.tab===id?'active':''}" onclick="app.tab('${id}')">${label}${b?`<span class="badge">${b}</span>`:''}</button>`
+  ).join('');
+}
+function renderWx(){
+  $('#wxSel').value = state.weather;
+  const w = WEATHER[state.weather];
+  const p = $('#wxPill'); p.textContent = w.label; p.style.background=w.color; p.style.color=w.ink;
+}
+function renderControl(){ const s=$('#ctrlSel'); if(s) s.value = state.control; }
+
+// ---- OPS BOARD ----
+function viewOps(){
+  const active = state.flights.filter(f=>['inbound','checkin','onstation'].includes(f.status));
+  const closed = state.flights.filter(f=>['departed','rtb','shotdown','kia','aborted','diverted'].includes(f.status));
+  let h = '<div class="row"><div class="col" style="flex:2">';
+  h += '<h2 style="margin-bottom:10px">Active Flights <span class="muted">('+active.length+')</span></h2>';
+  if(!active.length) h += '<div class="empty">No flights inbound or on station. Use <b>REQUEST AIR</b> to generate on-call CAS.</div>';
+  else h += active.map(flightCard).join('');
+  h += '</div><div class="col">';
+  h += '<h2 style="margin-bottom:10px">Completed / Off-Station</h2>';
+  if(!closed.length) h += '<div class="empty">None yet.</div>';
+  else h += closed.map(closedCard).join('');
+  h += '</div></div>';
+  return h;
+}
+
+function flightCard(f){
+  const wx = WEATHER[state.weather];
+  const onstn = f.status==='onstation';
+  const isCheckin = f.status==='checkin';
+  const counting = (onstn || isCheckin) ? f.stationSec : f.etaSec;
+  const clkVal = (onstn || isCheckin) ? f.stationSec : f.etaSec;
+  const clkLabel = onstn ? 'ON STATION' : (isCheckin ? 'AWAITING CHECK-IN' : 'ETA TO STATION');
+  const clkCls = (counting!=null) ? (counting<=60?'crit':(counting<=180?'warn':'')) : '';
+  let h = `<div class="card"><div class="hd">
+    <span class="status s-${f.status}">${statusLabel(f.status)}</span>
+    <b class="mono" style="font-size:16px">${esc(f.callsign)} ${esc(f.flightNo)}</b>
+    <span class="tag ${f.type==='FW'?'fw':'rw'}">${f.type}</span>
+    <span class="tag ${f.operator==='VNAF'?'vnaf':'us'}">${f.operator}</span>
+    ${f.control?`<span class="tag ctl">📻 ${esc(f.control)}</span>`:''}
+    ${f.aaa?'<span class="tag aaa">⚠ UNDER AAA</span>':''}
+    <span class="sp"></span>
+    <span class="muted" style="text-align:right">
+      <span style="font-size:11px">${clkLabel}</span><br>
+      <span id="clk-${f.id}" class="clock ${clkCls}">${fmtClock(clkVal)}</span>
+    </span>
+  </div><div class="bd">`;
+
+  h += `<div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}</div>`;
+  h += `<div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='VNAF'?' <span class="muted">(local)</span>':''} &nbsp;•&nbsp; declared load: <b>${f.loadState.toUpperCase()}</b></div>`;
+  if(onstn) h += `<div class="kv"><b>Station</b> <span id="sta-${f.id}">${fmtClock(f.stationSec)}</span> of ${fmtClock(f.stationMax)} remaining${f.paused?' <span class="tag vnaf">PAUSED</span>':''}</div>`;
+  else if(isCheckin) h += `<div class="kv"><b>Overhead</b> holding — awaiting FAC check-in. Playtime <b id="sta-${f.id}">${fmtClock(f.stationSec)}</b> <span class="muted">(burning; not yet cleared hot)</span></div>`;
+  else h += `<div class="kv"><b>En route</b> arriving in ~${Math.ceil(f.etaSec/60)} min • ${f.stationMin} min playtime on arrival</div>`;
+
+  h += '<hr><div><b class="muted" style="font-size:12px">ORDNANCE REMAINING</b>'
+    + (f.numAircraft>1?' <span class="muted" style="font-size:11px">(per aircraft A1…A'+f.numAircraft+')</span>':'');
+  (f.loadout||[]).forEach((L,i)=>{
+    const tot=ordTotal(L), maxTot=ordMax(L);
+    const cls = tot===0?'zero':(tot<=maxTot*0.34?'low':'');
+    const perStr = L.perPlane.length>1 ? ` <span class="muted" style="font-size:11px">[${L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join(' ')}]</span>` : '';
+    h += `<div class="wpn"><span class="name">${esc(L.name)}${perStr}</span>
+      <span class="cnt ${cls}">${tot}/${maxTot}</span>
+      ${onstn && tot>0 ? `<button class="small primary" onclick="app.openStrike(${f.id},${i})">Employ</button>`:''}
+    </div>`;
+  });
+  (f.guns||[]).forEach((G,gi)=>{
+    h += `<div class="wpn"><span class="name">${esc(G.name)}</span>
+      <span class="gunstate g-${G.state}">${G.state.toUpperCase()}</span>
+      ${onstn && G.state!=='winchester' ? `<button class="small primary" onclick="app.openStrikeGun(${f.id},${gi})">Strafe</button>`:''}
+    </div>`;
+  });
+  if(!(f.loadout||[]).length && !(f.guns||[]).length) h+='<div class="muted" style="padding:4px 0">Winchester — no ordnance.</div>';
+  h += '</div>';
+
+  if(f.notes) h += `<div class="kv" style="margin-top:8px"><b>Notes</b> ${esc(f.notes)}</div>`;
+
+  h += '<div class="flight-actions">';
+  if(f.status==='inbound') h += `<button onclick="app.arriveNow(${f.id})">Arrived Overhead (skip transit)</button>`;
+  if(isCheckin) h += `<button class="primary" onclick="app.checkIn(${f.id})">✓ Check In — clear hot</button>`;
+  if(onstn||isCheckin){
+    h += `<button onclick="app.toggleAaa(${f.id})">${f.aaa?'AAA Clear':'⚠ Taking AAA'}</button>`;
+    h += `<button onclick="app.togglePause(${f.id})">${f.paused?'Resume Clock':'Pause Clock'}</button>`;
+    h += `<button onclick="app.setStatus(${f.id},'rtb')">RTB (Bingo/Winch)</button>`;
+  }
+  h += `<button class="danger" onclick="app.setStatus(${f.id},'shotdown')">Shot Down</button>`;
+  h += `<button onclick="app.edit(${f.id})">Edit / Override</button>`;
+  h += `<button class="danger small" onclick="app.remove(${f.id})">Remove</button>`;
+  h += '</div>';
+
+  h += '</div></div>';
+  return h;
+}
+
+function closedCard(f){
+  return `<div class="card"><div class="hd">
+    <span class="status s-${f.status}">${statusLabel(f.status)}</span>
+    <b class="mono">${esc(f.callsign)} ${esc(f.flightNo)}</b>
+    <span class="tag ${f.type==='FW'?'fw':'rw'}">${f.type}</span>
+    <span class="sp"></span>
+    <button class="small" onclick="app.edit(${f.id})">Edit</button>
+    <button class="small" onclick="app.reactivate(${f.id})">Re-open</button>
+    <button class="small danger" onclick="app.remove(${f.id})">✕</button>
+  </div><div class="bd"><div class="kv"><b>Aircraft</b> ${f.numAircraft}×${esc(f.airframeName)} • ${SKILLS[f.skill].label} • ${f.operator}${f.control?' • 📻 '+esc(f.control):''}</div>
+  ${f.notes?`<div class="kv"><b>Notes</b> ${esc(f.notes)}</div>`:''}</div></div>`;
+}
+
+function statusLabel(s){ return {available:'AVAILABLE',inbound:'EN ROUTE',checkin:'AWAITING CHECK-IN',onstation:'ON STATION',
+  departed:'DEPARTED',rtb:'RTB',shotdown:'SHOT DOWN',kia:'PILOT KIA',aborted:'ABORTED',diverted:'DIVERTED'}[s]||s.toUpperCase(); }
+
+// ---- REQUEST AIR ----
+function viewRequest(){
+  const avail = state.flights.filter(f=>f.status==='available');
+  let h = `<div class="card"><div class="hd"><h2>Request Immediate CAS</h2></div><div class="bd">
+    <p class="muted">Generate on-call options. Each reflects an aircraft diverted from other tasking — variable fuel/time-on-station, possibly partial loads, randomly rolled pilot skill. The FAC picks from what's offered.</p>
+    <div class="hint" style="margin-bottom:10px">${tuneReadout()}</div>
+    <div class="row" style="align-items:flex-end">
+      <div><label>Options to generate</label>
+        <select id="genN"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
+      <div><label>Type</label>
+        <select id="genType"><option value="any">Any</option><option value="FW">Fixed-wing only</option><option value="RW">Rotary only</option></select></div>
+      <div><label>Allow VNAF (local)</label>
+        <select id="genVnaf"><option value="yes">Yes</option><option value="no">US only</option></select></div>
+      <div><button class="primary" onclick="app.doGenerate()">⟳ Generate Options</button></div>
+    </div>
+  </div></div>`;
+
+  h += '<h2 style="margin:14px 0 10px">Available Options <span class="muted">('+avail.length+')</span></h2>';
+  if(!avail.length) h += '<div class="empty">No pending options. Generate some above.</div>';
+  else h += '<div class="row">'+avail.map(availCard).join('')+'</div>';
+  return h;
+}
+function availCard(f){
+  let h = `<div class="col card" style="flex:1;min-width:300px"><div class="hd">
+    <b class="mono" style="font-size:15px">${esc(f.callsign)} ${esc(f.flightNo)}</b>
+    <span class="tag ${f.type==='FW'?'fw':'rw'}">${f.type}</span>
+    <span class="tag ${f.operator==='VNAF'?'vnaf':'us'}">${f.operator}</span>
+    ${f.control?`<span class="tag ctl">📻 ${esc(f.control)}</span>`:''}
+  </div><div class="bd">
+    <div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}</div>
+    <div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='VNAF'?' (local)':''}</div>
+    <div class="etaBox"><span>ARRIVES IN <b>${f.etaMin} MIN</b></span><span>PLAYTIME <b>${f.stationMin} MIN</b></span></div>
+    <div class="kv"><b>Load state</b> ${f.loadState.toUpperCase()}</div>
+    <hr><b class="muted" style="font-size:12px">LOADOUT</b>`;
+  (f.loadout||[]).forEach(L=>{ const tot=ordTotal(L);
+    const per = L.perPlane.length>1 ? ` <span class="muted" style="font-size:11px">(${L.perPlane.join('/')})</span>` : '';
+    h+=`<div class="wpn"><span class="name">${esc(L.name)}${per}</span><span class="cnt">${tot}</span></div>`; });
+  (f.guns||[]).forEach(G=>{ h+=`<div class="wpn"><span class="name">${esc(G.name)}</span><span class="gunstate g-${G.state}">${G.state.toUpperCase()}</span></div>`; });
+  h += `<div class="flight-actions">
+    <button class="primary" onclick="app.assign(${f.id})">✓ Assign to FAC</button>
+    <button onclick="app.reroll(${f.id})">Re-roll</button>
+    <button class="danger small" onclick="app.remove(${f.id})">Discard</button>
+  </div></div></div>`;
+  return h;
+}
+
+// ---- TUNING ----
+function tuneReadout(){ const t=T();
+  return `Current bounds — ETA ${Math.min(t.etaMin,t.etaMax)}–${Math.max(t.etaMin,t.etaMax)} min • `
+    +`On-station ${Math.min(t.stnMin,t.stnMax)}–${Math.max(t.stnMin,t.stnMax)} min • `
+    +`VNAF ${t.vnafChance}% • Low-fuel ${t.lowFuelChance}% • `
+    +`Load full/partial/other ${t.pctFull}/${t.pctPartial}/${Math.max(0,100-t.pctFull-t.pctPartial)}%. Change below.`; }
+
+function sliderRow(key,label,min,max,step,unit){
+  const v=T()[key]; unit=unit||'';
+  return `<div class="tuneRow"><label>${label}: <b id="tv_${key}">${v}${unit}</b></label>
+    <input type="range" id="ts_${key}" min="${min}" max="${max}" step="${step||1}" value="${v}"
+      oninput="app.setTune('${key}',this.value,'${unit}')"></div>`;
+}
+function tuneGroup(title, rows){
+  return `<div class="card"><div class="hd"><h3>${title}</h3></div><div class="bd"><div class="tuneGrid">${rows}</div></div></div>`;
+}
+function viewTuning(){
+  let h = `<div class="card"><div class="hd"><h2>Generation &amp; Accuracy Tuning</h2><span class="sp"></span>
+    <button class="small danger" onclick="app.resetTuning()">Reset to defaults</button></div>
+    <div class="bd"><div class="hint" id="tuneReadout">${tuneReadout()}</div>
+    <div class="hint">Weather / AAA / skill values are <b>percentage points of hit chance</b>. Everything here persists and applies to the next generated flight and every weapon release.</div></div></div>`;
+
+  h += '<div class="row"><div class="col">';
+  h += tuneGroup('Time to Arrive (ETA)',
+    sliderRow('etaMin','Min ETA',0,30,1,' min') + sliderRow('etaMax','Max ETA',0,60,1,' min'));
+  h += tuneGroup('Time on Station',
+    sliderRow('stnMin','Hard min on-station',1,60,1,' min') + sliderRow('stnMax','Hard max on-station',1,90,1,' min')
+    + sliderRow('lowFuelChance','Chance flight arrives low on fuel',0,100,1,'%')
+    + sliderRow('lowFuelMin','Low-fuel factor (min)',0.2,1,0.05,'')
+    + sliderRow('lowFuelMax','Low-fuel factor (max)',0.2,1,0.05,''));
+  h += tuneGroup('Flight Composition',
+    sliderRow('fwBias','Fixed-wing bias for "Any" (rest rotary)',0,100,1,'% FW')
+    + sliderRow('vnafChance','VNAF (local) appearance chance',0,100,1,'%')
+    + sliderRow('acMin','Min aircraft per flight',1,6,1,'')
+    + sliderRow('acMode','Median aircraft (most common)',1,6,1,'')
+    + sliderRow('acMax','Max aircraft per flight',1,6,1,'')
+    + sliderRow('pctFull','Load state: % full',0,100,1,'%')
+    + sliderRow('pctPartial','Load state: % partial (rest = other)',0,100,1,'%'));
+  h += '</div><div class="col">';
+  h += tuneGroup('Pilot Skill — base hit chance',
+    sliderRow('skRookie','Rookie',10,95,1,'%') + sliderRow('skRegular','Regular',10,95,1,'%')
+    + sliderRow('skVeteran','Veteran',10,95,1,'%') + sliderRow('skAce','Ace',10,99,1,'%')
+    + sliderRow('vnafPenalty','VNAF pilot penalty',0,40,1,' pp'));
+  h += tuneGroup('Weather / Visibility effect (pp)',
+    sliderRow('wxHazy','Moderate / hazy',-40,10,1,' pp') + sliderRow('wxPoor','Poor / overcast',-40,10,1,' pp')
+    + sliderRow('wxMarginal','Marginal / low ceiling',-50,10,1,' pp'));
+  h += tuneGroup('Engagement &amp; Reliability',
+    sliderRow('aaaPenalty','Accuracy penalty while under AAA',0,50,1,' pp')
+    + sliderRow('hungChance','Hung ordnance chance',0,20,0.5,'%')
+    + sliderRow('dudChance','Dud chance',0,20,0.5,'%')
+    + sliderRow('missDistBase','Miss distance scale',20,300,5,' m')
+    + sliderRow('missDistFloor','Miss distance floor',0,50,1,' m'));
+  h += '</div></div>';
+  return h;
+}
+
+// ---- LOG ----
+function viewLog(){
+  let h = `<div class="card"><div class="hd"><h2>After-Action Log</h2><span class="sp"></span>
+    <button class="small" onclick="app.exportLogTxt()">Export .txt</button>
+    <button class="small" onclick="app.exportJson()">Export session .json</button>
+    <button class="small danger" onclick="app.clearLog()">Clear log</button>
+  </div><div class="bd" style="max-height:70vh;overflow:auto">`;
+  if(!state.log.length) h += '<div class="empty">No events logged yet.</div>';
+  else h += state.log.map(e=>`<div class="logline"><span class="t">${e.ts}</span><span class="who">${esc(e.who)}</span><span>${esc(e.msg)}</span></div>`).join('');
+  h += '</div></div>';
+  return h;
+}
+
+// ---- LIBRARY ----
+function viewLibrary(){
+  let h = `<div class="row"><div class="col" style="flex:1.3">
+    <div class="card"><div class="hd"><h2>Airframes</h2><span class="sp"></span>
+      <button class="small primary" onclick="app.editAirframe(null)">+ Add airframe</button></div>
+      <div class="bd">`;
+  state.library.airframes.forEach(a=>{
+    const loads = (a.load||[]).map(l=> l.gun?('['+W(l.w).name+']'):(W(l.w).name+'×'+l.max)).join(', ');
+    h += `<div class="libitem">
+      <b>${esc(a.name)}</b>
+      <span class="tag ${a.type==='FW'?'fw':'rw'}">${a.type}</span>
+      ${a.vnaf?'<span class="tag vnaf">VNAF</span>':''}
+      ${a.fac?'<span class="tag">FAC</span>':''}
+      <span class="tag" title="spawn weight">×${a.weight==null?1:a.weight}</span>
+      <span class="muted" style="flex:1;font-size:12px">${esc(loads)}</span>
+      <button class="small" onclick="app.editAirframe('${a.id}')">Edit</button>
+      <button class="small danger" onclick="app.delAirframe('${a.id}')">✕</button>
+    </div>`;
+  });
+  h += `</div></div></div><div class="col">
+    <div class="card"><div class="hd"><h2>Weapons</h2><span class="sp"></span>
+      <button class="small primary" onclick="app.editWeapon(null)">+ Add weapon</button></div><div class="bd">`;
+  Object.entries(state.library.weapons).forEach(([id,w])=>{
+    h += `<div class="libitem"><b>${esc(w.name)}</b>
+      <span class="tag">${w.cat}</span>
+      <span class="muted" style="flex:1;font-size:12px">acc ${Math.round(w.acc*100)}% • ${w.pattern}${w.area?' • area':''}</span>
+      <button class="small" onclick="app.editWeapon('${id}')">Edit</button>
+      <button class="small danger" onclick="app.delWeapon('${id}')">✕</button></div>`;
+  });
+  h += `</div></div>
+    <div class="card"><div class="bd">
+      <button class="danger" onclick="app.resetLibrary()">Reset library to defaults</button>
+      <div class="hint">Your custom airframes/weapons persist automatically in this browser.</div>
+    </div></div>
+  </div></div>`;
+  return h;
+}
+
+// ---- SESSION ----
+function viewSession(){
+  return `<div class="card"><div class="hd"><h2>Session / Data</h2></div><div class="bd">
+    <p class="muted">Everything auto-saves in this browser. Use export to back up or move to another machine; import to restore.</p>
+    <div class="flight-actions">
+      <button class="primary" onclick="app.exportJson()">⭳ Export full session (.json)</button>
+      <button onclick="document.getElementById('importFile').click()">⭱ Import session (.json)</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" onchange="app.importJson(event)">
+      <button onclick="app.exportLogTxt()">Export after-action log (.txt)</button>
+    </div><hr>
+    <div class="flight-actions">
+      <button class="danger" onclick="app.newSession()">Start NEW session (clear flights + log, keep library)</button>
+      <button class="danger" onclick="app.wipeAll()">Wipe EVERYTHING (incl. library)</button>
+    </div>
+    <hr>
+    <div class="kv"><b>Flights</b> ${state.flights.length} tracked</div>
+    <div class="kv"><b>Log</b> ${state.log.length} events</div>
+    <div class="kv"><b>Library</b> ${state.library.airframes.length} airframes, ${Object.keys(state.library.weapons).length} weapons</div>
+  </div></div>`;
+}
+
+//=================================================================
+//  MODALS
+//=================================================================
+function closeModal(){ $('#modalRoot').innerHTML=''; }
+function showModal(html){ $('#modalRoot').innerHTML = `<div class="overlay" onclick="if(event.target===this)app.closeModal()"><div class="modal">${html}</div></div>`; }
+
+// strike (ordnance) — multi-aircraft employment, per-plane tracking
+function openStrike(fid, idx){
+  const f = state.flights.find(x=>x.id===fid); if(!f) return;
+  const L = f.loadout[idx]; if(!L || ordTotal(L)<=0) return;
+  const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
+  const patternDef = L.pattern==='pair'?2 : L.pattern==='salvo'?7 : 1;
+  const minStock = Math.min(...withStock.map(x=>x.c));
+  ui._strike = { fid, idx, nPlanes: withStock.length, qtyEach: Math.min(patternDef, minStock), rows:[] };
+  buildStrikeRows();
+  renderStrikeModal();
+}
+function strikePlanes(L, nPlanes){   // planes with stock, most-loaded first, capped to nPlanes
+  const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
+  return withStock.slice(0, clamp(nPlanes,1,withStock.length));
+}
+function buildStrikeRows(){
+  const {f,L}=curStrike(); if(!f) return;
+  const s=ui._strike;
+  s.rows = strikePlanes(L, s.nPlanes).map(pl=>{
+    const sug = suggestOutcome(f, {acc:L.acc, area:L.area, pattern:L.pattern, cat:L.cat});
+    return { pi:pl.pi, stock:pl.c, qty:Math.min(s.qtyEach, pl.c), type:sug.type, dist:sug.dist, card:sug.card, pHit:sug.pHit };
+  });
+}
+function outcomeText(type, dist, card){
+  if(type==='hung') return 'HUNG ORDNANCE — no release';
+  if(type==='aborted') return 'ABORTED PASS — no release';
+  if(type==='ontarget') return 'ON TARGET — good effect';
+  if(type==='dud') return 'DUD — released, no detonation';
+  if(type==='danger') return 'DANGER CLOSE — FRIENDLY effect ⚠';
+  return (type==='wide'?'WIDE — ':'MISS — ')+(dist||0)+'m '+(card||'')+' of target';
+}
+function renderStrikeModal(){
+  const {f,L}=curStrike(); if(!f) return;
+  const s=ui._strike;
+  const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
+  const planeOpts = withStock.map((_,i)=>`<option value="${i+1}" ${i+1===s.nPlanes?'selected':''}>${i+1}</option>`).join('');
+  const perStr = L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join('  ');
+  const rowsHtml = s.rows.map((r,ri)=>`
+    <div class="card" style="margin:6px 0"><div class="bd" style="padding:8px">
+      <div class="flex"><b>Aircraft ${r.pi+1}</b> <span class="muted">${r.stock} rem</span>
+        <span class="sp"></span>
+        <label style="margin:0">drops <input type="number" min="0" max="${r.stock}" id="rQty${ri}" value="${r.qty}" style="width:54px"></label></div>
+      <div class="suggest" style="margin:6px 0;padding:8px"><span class="muted" style="font-size:11px">suggested (${Math.round(r.pHit*100)}%): </span><b>${esc(outcomeText(r.type,r.dist,r.card))}</b></div>
+      <div class="flex">
+        <select id="rType${ri}" style="flex:1">
+          ${['ontarget|On target','miss|Miss','wide|Wide','hung|Hung (no release)','dud|Dud','danger|Danger close (friendly)','aborted|Aborted (no release)']
+            .map(o=>{const p=o.split('|');return `<option value="${p[0]}" ${p[0]===r.type?'selected':''}>${p[1]}</option>`;}).join('')}
+        </select>
+        <input type="number" id="rDist${ri}" value="${r.dist}" style="width:58px" title="miss distance (m)">
+        <select id="rCard${ri}" title="direction from target">${CARDINALS.map(c=>`<option ${c===r.card?'selected':''}>${c}</option>`).join('')}</select>
+      </div>
+    </div></div>`).join('');
+  showModal(`<div class="hd"><h3>Weapon Release — ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
+    <button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="kv"><b>Weapon</b> ${esc(L.name)}</div>
+    <div class="kv"><b>Per aircraft</b> <span class="mono">${perStr}</span></div>
+    <div class="kv"><b>Delivery</b> ${SKILLS[f.skill].label} • ${f.operator} • WX ${WEATHER[state.weather].label}${f.aaa?' • <span style="color:#e8846f">UNDER AAA</span>':''}</div>
+    <div class="grid2" style="margin-top:8px">
+      <div class="field"><label>Aircraft employing</label>
+        <select id="strkPlanes" onchange="app.rebuildStrike()">${planeOpts}</select></div>
+      <div class="field"><label>Weapons each drops</label>
+        <input type="number" id="strkQty" min="0" value="${s.qtyEach}" onchange="app.rebuildStrike()"></div>
+    </div>
+    <div class="flex"><span class="muted" style="font-size:12px">One suggested outcome per employing aircraft — override any.</span>
+      <span class="sp"></span><button class="small" onclick="app.rebuildStrike()">↻ Re-roll outcomes</button></div>
+    ${rowsHtml || '<div class="muted">No aircraft have this weapon remaining.</div>'}
+    <div class="field" style="margin-top:8px"><label>Note (optional, whole employment)</label>
+      <input type="text" id="ovNote" placeholder="e.g. secondary explosion, bunker destroyed"></div>
+   </div>
+   <div class="ft"><button onclick="app.closeModal()">Cancel</button>
+     <button class="primary" onclick="app.commitStrike()">Commit Release</button></div>`);
+}
+
+// strike (guns)
+function openStrikeGun(fid, gi){
+  const f = state.flights.find(x=>x.id===fid); if(!f) return;
+  const G = f.guns[gi]; if(!G || G.state==='winchester') return;
+  const wpn = {acc:(W(G.w).acc), area:false, pattern:'burst', cat:'gun'};
+  const sug = suggestOutcome(f, wpn);
+  ui._strikeGun = {fid, gi, sug};
+  showModal(`<div class="hd"><h3>Gun Run — ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
+    <button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="kv"><b>Weapon</b> ${esc(G.name)} <span class="gunstate g-${G.state}">${G.state.toUpperCase()}</span></div>
+    <div class="suggest"><div class="muted" style="font-size:12px">TOOL SUGGESTION (hit chance ${Math.round(sug.pHit*100)}%)</div>
+      <div class="big">${esc(sug.label)}</div>
+      <button class="small" onclick="app.reSuggestGun()">↻ Re-roll</button></div>
+    <div class="field"><label>Outcome</label>
+      <select id="gType">
+        <option value="ontarget">On target — rounds on target</option>
+        <option value="miss">Miss (cardinal + distance)</option>
+        <option value="wide">Wide</option>
+        <option value="danger">Danger close — friendly</option>
+        <option value="aborted">Aborted (no fire)</option>
+      </select></div>
+    <div class="grid2"><div class="field"><label>Distance (m)</label><input type="number" id="gDist" value="${ui._strikeGun.sug.dist}"></div>
+      <div class="field"><label>Direction</label><select id="gCard">${CARDINALS.map(c=>`<option ${c===sug.card?'selected':''}>${c}</option>`).join('')}</select></div></div>
+    <div class="field"><label>Ammo state after this run</label>
+      <select id="gState"><option value="full">Full</option><option value="partial" selected>Partial</option><option value="winchester">Winchester (out)</option></select></div>
+    <div class="field"><label>Note</label><input type="text" id="gNote"></div>
+   </div>
+   <div class="ft"><button onclick="app.closeModal()">Cancel</button>
+     <button class="primary" onclick="app.commitGun()">Commit Gun Run</button></div>`);
+  const sel=$('#gType'); if(sel){ sel.value = ['ontarget','miss','wide'].includes(sug.type)?sug.type:'miss'; }
+}
+
+// edit / override a flight
+function openEdit(fid){
+  const f = state.flights.find(x=>x.id===fid); if(!f) return;
+  const opt=(v,cur,lbl)=>`<option value="${v}" ${v===cur?'selected':''}>${lbl}</option>`;
+  let loadRows = (f.loadout||[]).map((L,i)=>{
+    const inputs = (L.perPlane||[]).map((c,pi)=>`<input type="number" min="0" id="edL${i}_${pi}" value="${c}" style="width:50px" title="Aircraft ${pi+1}">`).join(' ');
+    return `<div class="flex" style="flex-wrap:wrap"><span style="flex:1;min-width:130px">${esc(L.name)} <span class="muted">/${L.planeMax} ea</span></span>${inputs}</div>`;
+  }).join('');
+  let gunRows = (f.guns||[]).map((G,i)=>`<div class="flex"><span style="flex:1">${esc(G.name)}</span>
+     <select id="edG${i}">${['full','partial','winchester'].map(s=>opt(s,G.state,s)).join('')}</select></div>`).join('');
+  showModal(`<div class="hd"><h3>Edit / Override — ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
+    <button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="grid2">
+      <div class="field"><label>Callsign</label><input id="edCs" value="${esc(f.callsign)}"></div>
+      <div class="field"><label>Flight no.</label><input id="edFn" value="${esc(f.flightNo)}"></div>
+      <div class="field"><label>Status</label><select id="edSt">
+        ${['available','inbound','checkin','onstation','departed','rtb','shotdown','kia','aborted','diverted'].map(s=>opt(s,f.status,statusLabel(s))).join('')}</select></div>
+      <div class="field"><label># Aircraft</label><input type="number" min="1" id="edNa" value="${f.numAircraft}"></div>
+      <div class="field"><label>Operator</label><select id="edOp">${opt('US',f.operator,'US')}${opt('VNAF',f.operator,'VNAF (local)')}</select></div>
+      <div class="field"><label>Control agency</label><select id="edCtrl">${CONTROLS.map(c=>opt(c,f.control,c)).join('')}</select></div>
+      <div class="field"><label>Pilot skill</label><select id="edSk">${Object.entries(SKILLS).map(([k,v])=>opt(k,f.skill,v.label)).join('')}</select></div>
+      <div class="field"><label>ETA (min)</label><input type="number" min="0" id="edEta" value="${Math.ceil(f.etaSec/60)}"></div>
+      <div class="field"><label>On-station left (min)</label><input type="number" min="0" id="edStn" value="${Math.ceil(f.stationSec/60)}"></div>
+    </div>
+    <div class="field"><label>AAA</label><select id="edAaa">${opt('no',f.aaa?'yes':'no','Not engaged')}${opt('yes',f.aaa?'yes':'no','Under AAA')}</select></div>
+    <div class="field"><label>Notes</label><textarea id="edNotes" rows="2">${esc(f.notes)}</textarea></div>
+    ${loadRows?`<hr><b class="muted" style="font-size:12px">ORDNANCE COUNTS</b>${loadRows}`:''}
+    ${gunRows?`<hr><b class="muted" style="font-size:12px">GUN STATES</b>${gunRows}`:''}
+   </div>
+   <div class="ft"><button onclick="app.closeModal()">Cancel</button>
+     <button class="primary" onclick="app.saveEdit(${f.id})">Save</button></div>`);
+}
+
+// airframe editor
+function openAirframeEditor(id){
+  const isNew = !id;
+  const a = isNew ? {id:'af'+Date.now(), name:'', type:'FW', role:'strike', vnaf:false, fac:false, crew:1, weight:1, load:[], stn:[12,25]}
+                  : structuredClone(state.library.airframes.find(x=>x.id===id));
+  const wOpts = Object.entries(state.library.weapons).map(([wid,w])=>[wid,w.name]);
+  const opt=(v,cur,lbl)=>`<option value="${v}" ${v===cur?'selected':''}>${lbl}</option>`;
+  let rows = (a.load||[]).map((l,i)=>`<div class="flex" style="margin:4px 0">
+      <select id="afW${i}" style="flex:1">${wOpts.map(([wid,nm])=>opt(wid,l.w,nm)).join('')}</select>
+      <label style="margin:0"><input type="checkbox" id="afGun${i}" ${l.gun?'checked':''}> gun</label>
+      <input type="number" id="afMax${i}" value="${l.max||0}" style="width:60px" placeholder="qty">
+      <button class="small danger" onclick="app._afDelRow(${i})">✕</button></div>`).join('');
+  ui._afEdit = a;
+  showModal(`<div class="hd"><h3>${isNew?'Add':'Edit'} Airframe</h3><button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="grid2">
+      <div class="field"><label>Name</label><input id="afName" value="${esc(a.name)}"></div>
+      <div class="field"><label>Type</label><select id="afType">${opt('FW',a.type,'Fixed-wing')}${opt('RW',a.type,'Rotary')}</select></div>
+      <div class="field"><label>Role</label><select id="afRole">${opt('strike',a.role,'Strike (in CAS pool)')}${opt('fac',a.role,'FAC / scout')}</select></div>
+      <div class="field"><label>Crew</label><input type="number" id="afCrew" value="${a.crew||1}"></div>
+      <div class="field"><label>Spawn weight (0 = never)</label><input type="number" min="0" id="afWeight" value="${a.weight==null?1:a.weight}"></div>
+      <div class="field"><label>Station time min (min)</label><input type="number" id="afStnA" value="${a.stn?a.stn[0]:12}"></div>
+      <div class="field"><label>Station time max (min)</label><input type="number" id="afStnB" value="${a.stn?a.stn[1]:25}"></div>
+    </div>
+    <div class="flex" style="gap:16px">
+      <label style="margin:0"><input type="checkbox" id="afVnaf" ${a.vnaf?'checked':''}> VNAF-capable (local)</label>
+      <label style="margin:0"><input type="checkbox" id="afFac" ${a.fac?'checked':''}> Can mark / FAC</label>
+    </div>
+    <hr><div class="flex"><b class="muted" style="font-size:12px">LOADOUT (per single aircraft)</b><span class="sp"></span>
+      <button class="small primary" onclick="app._afAddRow()">+ station</button></div>
+    <div id="afRows">${rows||'<div class="muted">No stations yet.</div>'}</div>
+    <div class="hint">Tick "gun" for coarse (full/partial/winchester) weapons; otherwise qty is the full count per aircraft.</div>
+   </div>
+   <div class="ft"><button onclick="app.closeModal()">Cancel</button>
+     <button class="primary" onclick="app.saveAirframe('${a.id}',${isNew})">Save airframe</button></div>`);
+}
+
+// weapon editor
+function openWeaponEditor(id){
+  const isNew=!id;
+  const w = isNew ? {name:'',cat:'bomb',acc:0.55,pattern:'single',area:false}
+                  : structuredClone(state.library.weapons[id]);
+  const opt=(v,cur,lbl)=>`<option value="${v}" ${v===cur?'selected':''}>${lbl}</option>`;
+  showModal(`<div class="hd"><h3>${isNew?'Add':'Edit'} Weapon</h3><button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="field"><label>Name</label><input id="wName" value="${esc(w.name)}"></div>
+    <div class="grid2">
+      <div class="field"><label>Category</label><select id="wCat">
+        ${['bomb','napalm','cbu','rocket','gun'].map(c=>opt(c,w.cat,c)).join('')}</select></div>
+      <div class="field"><label>Delivery pattern</label><select id="wPat">
+        ${['single','pair','salvo','burst'].map(p=>opt(p,w.pattern,p)).join('')}</select></div>
+    </div>
+    <div class="field"><label>Base accuracy: <b id="wAccL">${Math.round(w.acc*100)}%</b></label>
+      <input type="range" id="wAcc" min="20" max="95" value="${Math.round(w.acc*100)}" style="width:100%"
+        oninput="document.getElementById('wAccL').textContent=this.value+'%'"></div>
+    <label style="margin:0"><input type="checkbox" id="wArea" ${w.area?'checked':''}> Area weapon (lenient misses)</label>
+   </div>
+   <div class="ft"><button onclick="app.closeModal()">Cancel</button>
+     <button class="primary" onclick="app.saveWeapon('${id||''}')">Save weapon</button></div>`);
+}
+
+//=================================================================
+//  ACTIONS (app.*)
+//=================================================================
+const app = {
+  tab(t){ ui.tab=t; render(); },
+  setWeather(v){ state.weather=v; logEvent('GM','Weather/visibility set to '+WEATHER[v].label); save(); renderWx(); },
+  setControl(v){ state.control=v; logEvent('GM','Control agency set to '+v); save(); renderControl(); },
+  setTune(key,val,unit){
+    val = Number(val);
+    // keep min/max pairs from crossing — visually clamp the dragged slider to its partner
+    const asMin={etaMin:'etaMax', stnMin:'stnMax', lowFuelMin:'lowFuelMax', acMin:'acMax'};
+    const asMax={etaMax:'etaMin', stnMax:'stnMin', lowFuelMax:'lowFuelMin', acMax:'acMin'};
+    if(asMin[key] && val > state.tuning[asMin[key]]) val = state.tuning[asMin[key]];
+    if(asMax[key] && val < state.tuning[asMax[key]]) val = state.tuning[asMax[key]];
+    state.tuning[key] = val;
+    // keep the median aircraft count within [min,max]
+    if(key==='acMin'||key==='acMax'){
+      const lo=Math.min(state.tuning.acMin,state.tuning.acMax), hi=Math.max(state.tuning.acMin,state.tuning.acMax);
+      const m=clamp(state.tuning.acMode,lo,hi);
+      if(m!==state.tuning.acMode){ state.tuning.acMode=m;
+        const s2=document.getElementById('ts_acMode'); if(s2)s2.value=m;
+        const l2=document.getElementById('tv_acMode'); if(l2)l2.textContent=m; }
+    } else if(key==='acMode'){
+      const lo=Math.min(state.tuning.acMin,state.tuning.acMax), hi=Math.max(state.tuning.acMin,state.tuning.acMax);
+      val=clamp(val,lo,hi); state.tuning.acMode=val;
+    }
+    const sl=document.getElementById('ts_'+key); if(sl && Number(sl.value)!==val) sl.value=val;
+    const el=document.getElementById('tv_'+key); if(el) el.textContent = val+(unit||'');
+    const ro=document.getElementById('tuneReadout'); if(ro) ro.textContent = tuneReadout();
+    clearTimeout(window._tuneT); window._tuneT=setTimeout(save, 400);
+  },
+  resetTuning(){ if(!confirm('Reset all tuning sliders to defaults?'))return;
+    state.tuning = structuredClone(DEFAULT_TUNING); logEvent('GM','Tuning reset to defaults'); save(); render(); toast('Tuning reset'); },
+  closeModal, openStrike, openStrikeGun,
+
+  doGenerate(){
+    const n = parseInt($('#genN').value,10)||2;
+    const type = $('#genType').value;
+    const allowVnaf = $('#genVnaf').value==='yes';
+    generateOptions(n, {type: type==='any'?null:type, allowVnaf});
+  },
+  reroll(fid){
+    const i = state.flights.findIndex(f=>f.id===fid); if(i<0) return;
+    const old = state.flights[i];
+    state.flights[i] = genFlight({});
+    state.flights[i].callsign=old.callsign; state.flights[i].flightNo=old.flightNo;
+    save(); render();
+  },
+  assign(fid){
+    const f = state.flights.find(x=>x.id===fid); if(!f) return;
+    f.status='inbound';
+    logEvent(f.callsign, `Assigned by FAC under ${f.control} — ${f.numAircraft}×${f.airframeName}, ${f.operator}, en route ETA ${Math.ceil(f.etaSec/60)}min, ${f.stationMin}min playtime`);
+    ui.tab='ops'; save(); render(); toast(f.callsign+' assigned — en route');
+  },
+  arriveNow(fid){
+    const f = state.flights.find(x=>x.id===fid); if(!f) return;
+    f.status='checkin'; f.etaSec=0;
+    logEvent(f.callsign, 'Arrived overhead — awaiting FAC check-in ('+fmtClock(f.stationSec)+' playtime)');
+    save(); render(); toast(f.callsign+' overhead — awaiting check-in');
+  },
+  checkIn(fid){
+    const f = state.flights.find(x=>x.id===fid); if(!f) return;
+    f.status='onstation'; f.arrivedAt=Date.now(); f.etaSec=0;
+    logEvent(f.callsign, 'Checked in on station — playtime '+fmtClock(f.stationSec));
+    save(); render(); toast(f.callsign+' checked in — on station');
+  },
+  toggleAaa(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return;
+    f.aaa=!f.aaa; logEvent(f.callsign, f.aaa?'Reports taking AAA fire':'Clear of AAA'); save(); render(); },
+  togglePause(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return; f.paused=!f.paused; save(); render(); },
+  setStatus(fid, s){
+    const f=state.flights.find(x=>x.id===fid); if(!f)return;
+    if(s==='shotdown' && !confirm(f.callsign+' — mark as SHOT DOWN?')) return;
+    f.status=s; logEvent(f.callsign, 'Status → '+statusLabel(s)); save(); render();
+    toast(f.callsign+' '+statusLabel(s));
+  },
+  reactivate(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return;
+    f.status = f.stationSec>0 ? 'onstation':'inbound'; logEvent(f.callsign,'Re-opened'); save(); render(); },
+  remove(fid){ const f=state.flights.find(x=>x.id===fid);
+    if(f && ['inbound','checkin','onstation'].includes(f.status) && !confirm('Remove active flight '+f.callsign+'?')) return;
+    state.flights=state.flights.filter(x=>x.id!==fid); save(); render(); },
+  edit(fid){ openEdit(fid); },
+  saveEdit(fid){
+    const f=state.flights.find(x=>x.id===fid); if(!f)return;
+    const prev=f.status;
+    f.callsign=$('#edCs').value.trim()||f.callsign;
+    f.flightNo=$('#edFn').value.trim();
+    f.status=$('#edSt').value;
+    const newNa=parseInt($('#edNa').value,10)||f.numAircraft;
+    f.operator=$('#edOp').value;
+    f.control=$('#edCtrl').value;
+    f.skill=$('#edSk').value;
+    f.etaSec=(parseInt($('#edEta').value,10)||0)*60;
+    f.stationSec=(parseInt($('#edStn').value,10)||0)*60;
+    if(f.stationSec>f.stationMax) f.stationMax=f.stationSec;
+    f.aaa=$('#edAaa').value==='yes';
+    f.notes=$('#edNotes').value;
+    (f.loadout||[]).forEach((L,i)=>{ (L.perPlane||[]).forEach((c,pi)=>{ const el=$('#edL'+i+'_'+pi); if(el) L.perPlane[pi]=Math.max(0,parseInt(el.value,10)||0); }); });
+    if(newNa!==f.numAircraft){        // resize per-plane arrays; new aircraft join fully loaded
+      (f.loadout||[]).forEach(L=>{ while(L.perPlane.length<newNa) L.perPlane.push(L.planeMax);
+        if(L.perPlane.length>newNa) L.perPlane.length=newNa; });
+    }
+    f.numAircraft=newNa;
+    (f.guns||[]).forEach((G,i)=>{ const el=$('#edG'+i); if(el) G.state=el.value; });
+    logEvent(f.callsign, 'Edited by GM'+(prev!==f.status?(' — status '+statusLabel(f.status)):''));
+    save(); closeModal(); render();
+  },
+
+  // strike ordnance — multi-aircraft
+  rebuildStrike(){
+    const p=document.getElementById('strkPlanes'), q=document.getElementById('strkQty');
+    if(p) ui._strike.nPlanes = parseInt(p.value,10)||1;
+    if(q) ui._strike.qtyEach = Math.max(0, parseInt(q.value,10)||0);
+    buildStrikeRows(); renderStrikeModal();
+  },
+  commitStrike(){
+    const {f,L}=curStrike(); if(!f)return;
+    const noteEl=document.getElementById('ovNote'); const note=noteEl&&noteEl.value.trim()?(' ('+noteEl.value.trim()+')'):'';
+    if(!ui._strike.rows.length){ closeModal(); return; }
+    ui._strike.rows.forEach((r,ri)=>{
+      const tEl=document.getElementById('rType'+ri), qEl=document.getElementById('rQty'+ri),
+            dEl=document.getElementById('rDist'+ri), cEl=document.getElementById('rCard'+ri);
+      const type = tEl?tEl.value:r.type;
+      let qty = qEl?parseInt(qEl.value,10):r.qty; if(isNaN(qty)) qty=r.qty;
+      const dist = dEl?(parseInt(dEl.value,10)||0):r.dist;
+      const card = cEl?cEl.value:r.card;
+      const released = !(type==='hung'||type==='aborted');
+      const used = released ? clamp(qty,0,L.perPlane[r.pi]) : 0;
+      L.perPlane[r.pi] = Math.max(0, L.perPlane[r.pi]-used);
+      logEvent(f.callsign, 'A'+(r.pi+1)+' '+(used>0?used+'× ':'')+L.name+' — '+outcomeText(type,dist,card)+note+'  ['+L.perPlane[r.pi]+' left on A'+(r.pi+1)+']');
+    });
+    checkWinchester(f);
+    save(); closeModal(); render();
+    toast('Release logged');
+  },
+
+  // strike guns
+  reSuggestGun(){ const f=state.flights.find(x=>x.id===ui._strikeGun.fid); const G=f.guns[ui._strikeGun.gi];
+    ui._strikeGun.sug=suggestOutcome(f,{acc:W(G.w).acc,area:false,pattern:'burst',cat:'gun'}); openStrikeGun(f.id, ui._strikeGun.gi); },
+  commitGun(){
+    const f=state.flights.find(x=>x.id===ui._strikeGun.fid); if(!f)return;
+    const G=f.guns[ui._strikeGun.gi];
+    const type=$('#gType').value; const note=$('#gNote').value.trim();
+    let outcome = type==='ontarget'?'rounds on target':(type==='danger'?'DANGER CLOSE — FRIENDLY ⚠':(type==='aborted'?'no fire':
+      ((type==='wide'?'WIDE — ':'MISS — ')+(parseInt($('#gDist').value,10)||0)+'m '+$('#gCard').value)));
+    G.state=$('#gState').value;
+    logEvent(f.callsign, 'Gun run ('+G.name+') — '+outcome+' • ammo '+G.state.toUpperCase()+(note?(' ('+note+')'):''));
+    checkWinchester(f);
+    save(); closeModal(); render();
+  },
+
+  // library
+  editAirframe(id){ openAirframeEditor(id); },
+  editWeapon(id){ openWeaponEditor(id); },
+  _afAddRow(){ ui._afEdit.load = collectAfRows(); ui._afEdit.load.push({w:Object.keys(state.library.weapons)[0],max:1,gun:false}); openAirframeEditor(ui._afEdit.id==='' ? null : (state.library.airframes.find(x=>x.id===ui._afEdit.id)?ui._afEdit.id:null)); reopenAf(); },
+  _afDelRow(i){ ui._afEdit.load = collectAfRows(); ui._afEdit.load.splice(i,1); reopenAf(); },
+  saveAirframe(id, isNew){
+    const a = ui._afEdit;
+    a.name=$('#afName').value.trim()||'Unnamed';
+    a.type=$('#afType').value; a.role=$('#afRole').value;
+    a.crew=parseInt($('#afCrew').value,10)||1;
+    const wv=parseInt($('#afWeight').value,10); a.weight = isNaN(wv)?1:Math.max(0,wv);
+    a.stn=[parseInt($('#afStnA').value,10)||10, parseInt($('#afStnB').value,10)||25];
+    a.vnaf=$('#afVnaf').checked; a.fac=$('#afFac').checked;
+    a.load=collectAfRows();
+    if(isNew){ state.library.airframes.push(a); }
+    else{ const i=state.library.airframes.findIndex(x=>x.id===id); if(i>=0) state.library.airframes[i]=a; }
+    save(); closeModal(); render(); toast('Airframe saved');
+  },
+  delAirframe(id){ if(!confirm('Delete airframe?'))return;
+    state.library.airframes=state.library.airframes.filter(x=>x.id!==id); save(); render(); },
+  saveWeapon(id){
+    const nw={ name:$('#wName').value.trim()||'Unnamed', cat:$('#wCat').value,
+      pattern:$('#wPat').value, acc:(parseInt($('#wAcc').value,10)||50)/100, area:$('#wArea').checked };
+    const key = id || (nw.name.toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,20)+'_'+Date.now().toString().slice(-4));
+    state.library.weapons[key]=nw; save(); closeModal(); render(); toast('Weapon saved');
+  },
+  delWeapon(id){ if(!confirm('Delete weapon?'))return; delete state.library.weapons[id]; save(); render(); },
+  resetLibrary(){ if(!confirm('Reset airframes + weapons to defaults? (flights/log kept)'))return;
+    state.library={weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES)};
+    save(); render(); toast('Library reset'); },
+
+  // session/data
+  exportJson(){ downloadFile('cas_session_'+dstamp()+'.json', JSON.stringify(state,null,2), 'application/json'); },
+  importJson(ev){
+    const file=ev.target.files[0]; if(!file)return;
+    const r=new FileReader();
+    r.onload=()=>{ try{ const d=JSON.parse(r.result);
+      if(!d.library) throw new Error('not a session file');
+      state=d; migrateState(); ui.tab='ops'; save(); render(); renderWx(); toast('Session imported');
+    }catch(e){ alert('Import failed: '+e.message); } };
+    r.readAsText(file); ev.target.value='';
+  },
+  exportLogTxt(){
+    const lines = state.log.slice().reverse().map(e=>`[${e.ts}] ${e.who}: ${e.msg}`);
+    const head = 'ARMA 3 CAS/FAC AFTER-ACTION LOG — '+new Date().toLocaleString()+'\n'+'Weather: '+WEATHER[state.weather].label+'\n'+'='.repeat(50)+'\n';
+    downloadFile('cas_aar_'+dstamp()+'.txt', head+lines.join('\n'), 'text/plain');
+  },
+  clearLog(){ if(!confirm('Clear the after-action log?'))return; state.log=[]; save(); render(); },
+  newSession(){ if(!confirm('Start new session? Clears all flights and log (library kept).'))return;
+    state.flights=[]; state.log=[]; state.seq=1; state.weather='good';
+    logEvent('GM','New session started'); save(); ui.tab='ops'; render(); renderWx(); },
+  wipeAll(){ if(!confirm('WIPE EVERYTHING including your custom library?'))return;
+    localStorage.removeItem(LS_KEY);
+    state={weather:'good',control:'Monkey Mountain',flights:[],log:[],seq:1,tuning:structuredClone(DEFAULT_TUNING),library:{weapons:structuredClone(DEFAULT_WEAPONS),airframes:structuredClone(DEFAULT_AIRFRAMES)}};
+    ui.tab='ops'; save(); render(); renderWx(); }
+};
+
+// helper accessors for strike modal
+function curStrike(){ if(!ui._strike) return {}; const f=state.flights.find(x=>x.id===ui._strike.fid);
+  return {f, L: f?f.loadout[ui._strike.idx]:null}; }
+function curLoad(){ return curStrike().L; }
+function collectAfRows(){
+  const rows=[]; let i=0;
+  while($('#afW'+i)){ rows.push({ w:$('#afW'+i).value, gun:$('#afGun'+i).checked, max:parseInt($('#afMax'+i).value,10)||0 }); i++; }
+  return rows;
+}
+function reopenAf(){ // re-render the airframe editor preserving current edits
+  const a=ui._afEdit; const id=state.library.airframes.find(x=>x.id===a.id)?a.id:null;
+  // stash current header fields
+  a.name=$('#afName')?$('#afName').value:a.name;
+  openAirframeEditor(id); // uses ui._afEdit
+}
+function checkWinchester(f){
+  const ordLeft=(f.loadout||[]).some(L=>ordTotal(L)>0);
+  const gunLeft=(f.guns||[]).some(G=>G.state!=='winchester');
+  if(!ordLeft && !gunLeft && f.status==='onstation'){
+    logEvent(f.callsign,'WINCHESTER — all ordnance expended');
+    toast(f.callsign+' is WINCHESTER');
+  }
+}
+
+function downloadFile(name, content, mime){
+  const blob=new Blob([content],{type:mime});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+}
+function dstamp(){ const d=new Date(); return d.toISOString().slice(0,16).replace(/[-:T]/g,''); }
+
+//=================================================================
+//  TICK — decrement timers; update only clock spans (no full re-render)
+//=================================================================
+setInterval(()=>{
+  let dirty=false, expired=[];
+  state.flights.forEach(f=>{
+    if(f.status==='inbound' && f.etaSec>0){ f.etaSec--; dirty=true;
+      const el=document.getElementById('clk-'+f.id); if(el){ el.textContent=fmtClock(f.etaSec);
+        el.className='clock '+(f.etaSec<=60?'crit':f.etaSec<=180?'warn':''); }
+      if(f.etaSec===0){ f.status='checkin';
+        logEvent(f.callsign,'Arrived overhead — awaiting FAC check-in ('+fmtClock(f.stationSec)+' playtime)'); expired.push(f); }
+    } else if((f.status==='onstation'||f.status==='checkin') && !f.paused && f.stationSec>0){ f.stationSec--; dirty=true;
+      const el=document.getElementById('clk-'+f.id); if(el){ el.textContent=fmtClock(f.stationSec);
+        el.className='clock '+(f.stationSec<=60?'crit':f.stationSec<=180?'warn':''); }
+      const el2=document.getElementById('sta-'+f.id); if(el2) el2.textContent=fmtClock(f.stationSec);
+      if(f.stationSec===0){ logEvent(f.callsign,'STATION TIME EXPIRED — bingo, RTB'); expired.push(f); }
+    }
+  });
+  if(expired.length){ if(ui.tab==='ops') render(); }
+  if(dirty) { clearTimeout(window._svT); window._svT=setTimeout(save, 3000); }
+}, 1000);
+
+//=================================================================
+//  BOOT
+//=================================================================
+load();
+if(!state.log.length) logEvent('GM','Tracker initialised');
+render(); renderWx();
+window.app = app;
+</script>
+</body>
+</html>

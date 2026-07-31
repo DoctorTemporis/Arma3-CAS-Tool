@@ -1,0 +1,13 @@
+# Manual backup copies (git history supersedes these — safe to delete from disk)
+* - BAK.html
+* - Copy.html
+*.bak
+
+# Claude Code local, machine-specific settings (permissions cache, etc.)
+.claude/settings.local.json
+
+# OS / editor cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+*~
