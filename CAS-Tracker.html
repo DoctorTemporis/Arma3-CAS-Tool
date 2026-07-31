@@ -72,8 +72,13 @@
   .wpn{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed #223021}
   .wpn:last-child{border-bottom:none}
   .wpn .name{flex:1}
-  .cnt{font-family:"Consolas",monospace;font-weight:700;min-width:52px;text-align:right}
+  .cnt{font-family:"Consolas",monospace;font-weight:700;min-width:58px;text-align:right;font-size:15px}
   .cnt.low{color:var(--amber2)} .cnt.zero{color:#e8846f}
+  .perplane{display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-right:10px}
+  .pp{font-family:"Consolas",monospace;font-size:13px;color:var(--ink);background:#12180f;
+    border:1px solid var(--line);border-radius:4px;padding:2px 7px;white-space:nowrap}
+  .pp b{color:var(--amber2);font-weight:700;margin-right:4px}
+  .pp.empty{color:#e8846f} .pp.empty b{color:#e8846f}
   .gunstate{font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px}
   .g-full{color:#8fe07a;background:#173017}.g-partial{color:#f0c874;background:#3a2f12}.g-winchester{color:#e8846f;background:#2a1712}
   .flight-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
@@ -577,8 +582,10 @@ function flightCard(f){
   (f.loadout||[]).forEach((L,i)=>{
     const tot=ordTotal(L), maxTot=ordMax(L);
     const cls = tot===0?'zero':(tot<=maxTot*0.34?'low':'');
-    const perStr = showPer && L.perPlane.length>1 ? ` <span class="muted" style="font-size:11px">[${L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join(' ')}]</span>` : '';
-    h += `<div class="wpn"><span class="name">${esc(L.name)}${perStr}</span>
+    const perStr = showPer && L.perPlane.length>1
+      ? `<span class="perplane">${L.perPlane.map((c,pi)=>`<span class="pp${c===0?' empty':''}"><b>A${pi+1}</b>${c}</span>`).join('')}</span>` : '';
+    h += `<div class="wpn"><span class="name">${esc(L.name)}</span>
+      ${perStr}
       <span class="cnt ${cls}">${tot}/${maxTot}</span>
       ${onstn && tot>0 ? `<button class="small primary" onclick="app.openStrike(${f.id},${i})">Employ</button>`:''}
     </div>`;
@@ -851,7 +858,7 @@ function openStrike(fid, idx){
   if(perPlaneMode()){
     const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
     const minStock = Math.min(...withStock.map(x=>x.c));
-    ui._strike = { fid, idx, mode:'plane', nPlanes: withStock.length, qtyEach: Math.min(patternDef, minStock), rows:[] };
+    ui._strike = { fid, idx, mode:'plane', qtyEach: Math.min(patternDef, minStock), rows:[] };
     buildStrikeRows();
   } else {
     const total=ordTotal(L);
@@ -861,28 +868,40 @@ function openStrike(fid, idx){
   }
   renderStrikeModal();
 }
-function strikePlanes(L, nPlanes){   // planes with stock, most-loaded first, capped to nPlanes
-  const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c);
-  return withStock.slice(0, clamp(nPlanes,1,withStock.length));
-}
-function buildStrikeRows(){
+function buildStrikeRows(){    // one row per aircraft that has this weapon; all selected by default
   const {f,L}=curStrike(); if(!f) return;
   const s=ui._strike;
-  s.rows = strikePlanes(L, s.nPlanes).map(pl=>{
+  const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
+  s.rows = withStock.map(pl=>{
     const sug = suggestOutcome(f, {acc:L.acc, area:L.area, pattern:L.pattern, cat:L.cat});
-    return { pi:pl.pi, stock:pl.c, qty:Math.min(s.qtyEach, pl.c), type:sug.type, dist:sug.dist, card:sug.card, pHit:sug.pHit };
+    return { pi:pl.pi, stock:pl.c, active:true, qty:Math.min(s.qtyEach, pl.c), type:sug.type, dist:sug.dist, card:sug.card, pHit:sug.pHit };
+  });
+}
+// read the modal's current field values back into ui._strike.rows (before re-render / commit)
+function captureStrike(){
+  const s=ui._strike; if(!s||!s.rows) return;
+  s.rows.forEach((r,ri)=>{
+    if(r.pi!=null){ const e=document.getElementById('emp'+ri); if(e) r.active=e.checked; }
+    const q=document.getElementById('rQty'+ri); if(q){ const v=parseInt(q.value,10); if(!isNaN(v)) r.qty=clamp(v,0,r.stock); }
+    const t=document.getElementById('rType'+ri); if(t) r.type=t.value;
+    const d=document.getElementById('rDist'+ri); if(d){ const v=parseInt(d.value,10); if(!isNaN(v)) r.dist=v; }
+    const c=document.getElementById('rCard'+ri); if(c) r.card=c.value;
   });
 }
 function strikeRowHtml(r,ri){
-  return `<div class="card" style="margin:6px 0"><div class="bd" style="padding:8px">
-      <div class="flex"><b>${r.pi==null?'Flight (pooled)':'Aircraft '+(r.pi+1)}</b> <span class="muted">${r.stock} rem</span>
+  const flight = r.pi==null;
+  const active = flight ? true : r.active!==false;
+  const dis = active?'':'disabled';
+  const cb = flight ? '' : `<input type="checkbox" id="emp${ri}" ${active?'checked':''} onchange="app.togglePlane()" style="margin-right:6px">`;
+  return `<div class="card" style="margin:6px 0;${active?'':'opacity:.45'}"><div class="bd" style="padding:8px">
+      <div class="flex">${cb}<b>${flight?'Flight (pooled)':'Aircraft '+(r.pi+1)}</b> <span class="muted">${r.stock} rem</span>
         <span class="sp"></span>
-        <label style="margin:0">drops <input type="number" min="0" max="${r.stock}" id="rQty${ri}" value="${r.qty}" style="width:56px" oninput="app.clampInput(this)"></label></div>
+        <label style="margin:0">drops <input type="number" min="0" max="${r.stock}" id="rQty${ri}" value="${r.qty}" style="width:56px" oninput="app.clampInput(this)" ${dis}></label></div>
       <div class="suggest" style="margin:6px 0;padding:8px"><span class="muted" style="font-size:11px">suggested (${Math.round(r.pHit*100)}%): </span><b>${esc(outcomeText(r.type,r.dist,r.card))}</b></div>
       <div class="flex">
-        <select id="rType${ri}" style="flex:1">${OUTCOME_OPTS(r.type)}</select>
-        <input type="number" id="rDist${ri}" value="${r.dist}" style="width:58px" title="miss distance (m)">
-        <select id="rCard${ri}" title="direction from target">${CARDINALS.map(c=>`<option ${c===r.card?'selected':''}>${c}</option>`).join('')}</select>
+        <select id="rType${ri}" style="flex:1" ${dis}>${OUTCOME_OPTS(r.type)}</select>
+        <input type="number" id="rDist${ri}" value="${r.dist}" style="width:58px" title="miss distance (m)" ${dis}>
+        <select id="rCard${ri}" title="direction from target" ${dis}>${CARDINALS.map(c=>`<option ${c===r.card?'selected':''}>${c}</option>`).join('')}</select>
       </div>
     </div></div>`;
 }
@@ -891,14 +910,13 @@ function renderStrikeModal(){
   const s=ui._strike;
   const perLine = L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join('  ');
   const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
-  const planeOpts = withStock.map((_,i)=>`<option value="${i+1}" ${i+1===s.nPlanes?'selected':''}>${i+1}</option>`).join('');
   const maxEach = withStock.length?Math.max(...withStock.map(x=>x.c)):0;
   const controls = s.mode==='plane' ? `
-    <div class="grid2" style="margin-top:8px">
-      <div class="field"><label>Aircraft employing</label>
-        <select id="strkPlanes" onchange="app.rebuildStrike()">${planeOpts}</select></div>
-      <div class="field"><label>Weapons each drops (max ${maxEach})</label>
-        <input type="number" id="strkQty" min="0" max="${maxEach}" value="${s.qtyEach}" oninput="app.clampInput(this)" onchange="app.rebuildStrike()"></div>
+    <div class="flex" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+      <label style="margin:0;color:var(--muted);font-size:12px">Set each selected to
+        <input type="number" id="strkQty" min="0" max="${maxEach}" value="${s.qtyEach}" style="width:56px" oninput="app.clampInput(this)"></label>
+      <button class="small" onclick="app.applyEach()">Apply</button>
+      <span class="muted" style="font-size:12px">— tick which aircraft release</span>
     </div>` : '';
   showModal(`<div class="hd"><h3>Weapon Release — ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
     <button class="small" onclick="app.closeModal()">✕</button></div>
@@ -907,8 +925,8 @@ function renderStrikeModal(){
     ${f.numAircraft>1?`<div class="kv"><b>Per aircraft</b> <span class="mono">${perLine}</span></div>`:''}
     <div class="kv"><b>Delivery</b> ${SKILLS[f.skill].label} • ${f.operator} • WX ${WEATHER[state.weather].label}${f.aaa?' • <span style="color:#e8846f">UNDER AAA</span>':''}</div>
     ${controls}
-    <div class="flex" style="margin-top:6px"><span class="muted" style="font-size:12px">${s.mode==='plane'?'One suggested outcome per employing aircraft':'One suggested outcome for the pass'} — override any.</span>
-      <span class="sp"></span><button class="small" onclick="app.rebuildStrike()">↻ Re-roll</button></div>
+    <div class="flex" style="margin-top:6px"><span class="muted" style="font-size:12px">${s.mode==='plane'?'One suggested outcome per selected aircraft':'One suggested outcome for the pass'} — override any.</span>
+      <span class="sp"></span><button class="small" onclick="app.rerollOutcomes()">↻ Re-roll</button></div>
     ${s.rows.map(strikeRowHtml).join('') || '<div class="muted">No ordnance remaining.</div>'}
     <div class="field" style="margin-top:8px"><label>Note (optional)</label>
       <input type="text" id="ovNote" placeholder="e.g. secondary explosion, bunker destroyed"></div>
@@ -1163,41 +1181,38 @@ const app = {
   // strike ordnance — per-aircraft or per-flight
   clampInput(el){ const mx=parseInt(el.getAttribute('max'),10); let v=parseInt(el.value,10);
     if(isNaN(v)) return; if(v<0){ el.value=0; return; } if(!isNaN(mx)&&v>mx) el.value=mx; },
-  rebuildStrike(){
-    const s=ui._strike;
-    if(s.mode==='flight'){
-      const {f,L}=curStrike(); if(!f) return;
-      const qEl=document.getElementById('rQty0'); let qty=qEl?parseInt(qEl.value,10):s.rows[0].qty; if(isNaN(qty)) qty=s.rows[0].qty;
+  togglePlane(){ captureStrike(); renderStrikeModal(); },
+  applyEach(){ captureStrike();
+    const q=document.getElementById('strkQty'); const each=q?Math.max(0,parseInt(q.value,10)||0):ui._strike.qtyEach;
+    ui._strike.qtyEach=each;
+    ui._strike.rows.forEach(r=>{ if(r.active!==false) r.qty=clamp(each,0,r.stock); });
+    renderStrikeModal(); },
+  rerollOutcomes(){ captureStrike();
+    const {f,L}=curStrike(); if(!f)return;
+    ui._strike.rows.forEach(r=>{ if(r.pi==null || r.active!==false){
       const sug=suggestOutcome(f,{acc:L.acc,area:L.area,pattern:L.pattern,cat:L.cat});
-      s.rows=[{ pi:null, stock:ordTotal(L), qty:clamp(qty,0,ordTotal(L)), type:sug.type,dist:sug.dist,card:sug.card,pHit:sug.pHit }];
-      renderStrikeModal(); return;
-    }
-    const p=document.getElementById('strkPlanes'), q=document.getElementById('strkQty');
-    if(p) s.nPlanes = parseInt(p.value,10)||1;
-    if(q) s.qtyEach = Math.max(0, parseInt(q.value,10)||0);
-    buildStrikeRows(); renderStrikeModal();
-  },
+      r.type=sug.type; r.dist=sug.dist; r.card=sug.card; r.pHit=sug.pHit; } });
+    renderStrikeModal(); },
   commitStrike(){
     const {f,L}=curStrike(); if(!f)return;
+    captureStrike();
     const noteEl=document.getElementById('ovNote'); const note=noteEl&&noteEl.value.trim()?(' ('+noteEl.value.trim()+')'):'';
     if(!ui._strike.rows.length){ closeModal(); return; }
-    ui._strike.rows.forEach((r,ri)=>{
-      const tEl=document.getElementById('rType'+ri), qEl=document.getElementById('rQty'+ri),
-            dEl=document.getElementById('rDist'+ri), cEl=document.getElementById('rCard'+ri);
-      const type = tEl?tEl.value:r.type;
-      let qty = qEl?parseInt(qEl.value,10):r.qty; if(isNaN(qty)) qty=r.qty;
-      const dist = dEl?(parseInt(dEl.value,10)||0):r.dist;
-      const card = cEl?cEl.value:r.card;
-      const released = !(type==='hung'||type==='aborted');
+    let any=false;
+    ui._strike.rows.forEach(r=>{
+      if(r.pi!=null && r.active===false) return;   // aircraft not selected to release
+      any=true;
+      const released = !(r.type==='hung'||r.type==='aborted');
       if(r.pi==null){        // flight pool
-        const used = released ? drawFromFlight(L, qty) : 0;
-        logEvent(f.callsign, (used>0?used+'× ':'')+L.name+' — '+outcomeText(type,dist,card)+note+'  ['+ordTotal(L)+' left]');
+        const used = released ? drawFromFlight(L, r.qty) : 0;
+        logEvent(f.callsign, (used>0?used+'× ':'')+L.name+' — '+outcomeText(r.type,r.dist,r.card)+note+'  ['+ordTotal(L)+' left]');
       } else {               // per aircraft
-        const used = released ? clamp(qty,0,L.perPlane[r.pi]) : 0;
+        const used = released ? clamp(r.qty,0,L.perPlane[r.pi]) : 0;
         L.perPlane[r.pi] = Math.max(0, L.perPlane[r.pi]-used);
-        logEvent(f.callsign, 'A'+(r.pi+1)+' '+(used>0?used+'× ':'')+L.name+' — '+outcomeText(type,dist,card)+note+'  ['+L.perPlane[r.pi]+' left on A'+(r.pi+1)+']');
+        logEvent(f.callsign, 'A'+(r.pi+1)+' '+(used>0?used+'× ':'')+L.name+' — '+outcomeText(r.type,r.dist,r.card)+note+'  ['+L.perPlane[r.pi]+' left on A'+(r.pi+1)+']');
       }
     });
+    if(!any){ closeModal(); return; }
     checkWinchester(f);
     save(); closeModal(); render();
     toast('Release logged');
