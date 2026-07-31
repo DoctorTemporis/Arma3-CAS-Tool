@@ -172,6 +172,8 @@ const DEFAULT_TUNING = {
   stnMin:4, stnMax:45,             // hard min/max minutes on station
   lowFuelChance:40,                // % of flights that arrive low on fuel
   lowFuelMin:0.45, lowFuelMax:0.70,// fuel factor applied to station time when low
+  // system
+  perPlane:true,                   // true = ordnance tracked/employed per aircraft; false = per flight (pooled)
   // composition
   fwBias:55,                       // % chance an "Any" option is fixed-wing (rest rotary)
   vnafChance:35,                   // % chance a VNAF-capable flight is local
@@ -569,12 +571,13 @@ function flightCard(f){
   else if(isCheckin) h += `<div class="kv"><b>Overhead</b> holding — awaiting FAC check-in. Playtime <b id="sta-${f.id}">${fmtClock(f.stationSec)}</b> <span class="muted">(burning; not yet cleared hot)</span></div>`;
   else h += `<div class="kv"><b>En route</b> arriving in ~${Math.ceil(f.etaSec/60)} min • ${f.stationMin} min playtime on arrival</div>`;
 
+  const showPer = perPlaneMode() && f.numAircraft>1;
   h += '<hr><div><b class="muted" style="font-size:12px">ORDNANCE REMAINING</b>'
-    + (f.numAircraft>1?' <span class="muted" style="font-size:11px">(per aircraft A1…A'+f.numAircraft+')</span>':'');
+    + (showPer?' <span class="muted" style="font-size:11px">(per aircraft A1…A'+f.numAircraft+')</span>':(f.numAircraft>1?' <span class="muted" style="font-size:11px">(flight-pooled)</span>':''));
   (f.loadout||[]).forEach((L,i)=>{
     const tot=ordTotal(L), maxTot=ordMax(L);
     const cls = tot===0?'zero':(tot<=maxTot*0.34?'low':'');
-    const perStr = L.perPlane.length>1 ? ` <span class="muted" style="font-size:11px">[${L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join(' ')}]</span>` : '';
+    const perStr = showPer && L.perPlane.length>1 ? ` <span class="muted" style="font-size:11px">[${L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join(' ')}]</span>` : '';
     h += `<div class="wpn"><span class="name">${esc(L.name)}${perStr}</span>
       <span class="cnt ${cls}">${tot}/${maxTot}</span>
       ${onstn && tot>0 ? `<button class="small primary" onclick="app.openStrike(${f.id},${i})">Employ</button>`:''}
@@ -659,7 +662,7 @@ function availCard(f){
     <div class="kv"><b>Load state</b> ${f.loadState.toUpperCase()}</div>
     <hr><b class="muted" style="font-size:12px">LOADOUT</b>`;
   (f.loadout||[]).forEach(L=>{ const tot=ordTotal(L);
-    const per = L.perPlane.length>1 ? ` <span class="muted" style="font-size:11px">(${L.perPlane.join('/')})</span>` : '';
+    const per = (perPlaneMode() && L.perPlane.length>1) ? ` <span class="muted" style="font-size:11px">(${L.perPlane.join('/')})</span>` : '';
     h+=`<div class="wpn"><span class="name">${esc(L.name)}${per}</span><span class="cnt">${tot}</span></div>`; });
   (f.guns||[]).forEach(G=>{ h+=`<div class="wpn"><span class="name">${esc(G.name)}</span><span class="gunstate g-${G.state}">${G.state.toUpperCase()}</span></div>`; });
   h += `<div class="flight-actions">
@@ -675,7 +678,8 @@ function tuneReadout(){ const t=T();
   return `Current bounds — ETA ${Math.min(t.etaMin,t.etaMax)}–${Math.max(t.etaMin,t.etaMax)} min • `
     +`On-station ${Math.min(t.stnMin,t.stnMax)}–${Math.max(t.stnMin,t.stnMax)} min • `
     +`VNAF ${t.vnafChance}% • Low-fuel ${t.lowFuelChance}% • `
-    +`Load full/partial/other ${t.pctFull}/${t.pctPartial}/${Math.max(0,100-t.pctFull-t.pctPartial)}%. Change below.`; }
+    +`Load full/partial/other ${t.pctFull}/${t.pctPartial}/${Math.max(0,100-t.pctFull-t.pctPartial)}% • `
+    +`Ordnance ${t.perPlane!==false?'per-aircraft':'per-flight'}. Change below.`; }
 
 function sliderRow(key,label,min,max,step,unit){
   const v=T()[key]; unit=unit||'';
@@ -686,11 +690,21 @@ function sliderRow(key,label,min,max,step,unit){
 function tuneGroup(title, rows){
   return `<div class="card"><div class="hd"><h3>${title}</h3></div><div class="bd"><div class="tuneGrid">${rows}</div></div></div>`;
 }
+function toggleRow(key,label,hint){
+  const v=T()[key]!==false;
+  return `<div class="tuneRow"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+    <input type="checkbox" id="ts_${key}" ${v?'checked':''} onchange="app.setToggle('${key}',this.checked)">
+    <span><b>${label}</b> — <span class="muted">currently ${v?'PER AIRCRAFT':'PER FLIGHT'}</span></span></label>
+    ${hint?`<div class="hint" style="margin-top:2px">${hint}</div>`:''}</div>`;
+}
 function viewTuning(){
   let h = `<div class="card"><div class="hd"><h2>Generation &amp; Accuracy Tuning</h2><span class="sp"></span>
     <button class="small danger" onclick="app.resetTuning()">Reset to defaults</button></div>
     <div class="bd"><div class="hint" id="tuneReadout">${tuneReadout()}</div>
     <div class="hint">Weather / AAA / skill values are <b>percentage points of hit chance</b>. Everything here persists and applies to the next generated flight and every weapon release.</div></div></div>`;
+
+  h += tuneGroup('System', toggleRow('perPlane','Ordnance accounting',
+    'On (default): each aircraft in a flight carries and expends its own stores, and you employ planes individually. Off: ordnance is pooled at the flight level — you just say how many weapons drop per pass.'));
 
   h += '<div class="row"><div class="col">';
   h += tuneGroup('Time to Arrive (ETA)',
@@ -804,15 +818,47 @@ function viewSession(){
 function closeModal(){ $('#modalRoot').innerHTML=''; }
 function showModal(html){ $('#modalRoot').innerHTML = `<div class="overlay" onclick="if(event.target===this)app.closeModal()"><div class="modal">${html}</div></div>`; }
 
-// strike (ordnance) — multi-aircraft employment, per-plane tracking
+// strike (ordnance) — per-aircraft OR per-flight accounting (system toggle T().perPlane)
+function perPlaneMode(){ return T().perPlane !== false; }
+function drawFromFlight(L, amount){        // spend from the flight pool, fullest planes first
+  let need=Math.max(0, Math.min(amount, ordTotal(L))); const used=need;
+  const order=L.perPlane.map((c,pi)=>({c,pi})).sort((a,b)=>b.c-a.c);
+  for(const o of order){ if(need<=0) break; const take=Math.min(o.c, need); L.perPlane[o.pi]-=take; need-=take; }
+  return used;
+}
+function setFlightTotal(L, total){        // distribute a flight-level total across planes (per-flight edit)
+  const n=L.perPlane.length||1; total=clamp(Math.round(total),0,L.planeMax*n);
+  const base=Math.floor(total/n); let rem=total-base*n;
+  L.perPlane=L.perPlane.map(()=>Math.min(base,L.planeMax));
+  for(let i=0;i<n && rem>0;i++){ if(L.perPlane[i]<L.planeMax){ L.perPlane[i]++; rem--; } }
+}
+function OUTCOME_OPTS(sel){
+  return ['ontarget|On target','miss|Miss','wide|Wide','hung|Hung (no release)','dud|Dud','danger|Danger close (friendly)','aborted|Aborted (no release)']
+    .map(o=>{const p=o.split('|');return `<option value="${p[0]}" ${p[0]===sel?'selected':''}>${p[1]}</option>`;}).join('');
+}
+function outcomeText(type, dist, card){
+  if(type==='hung') return 'HUNG ORDNANCE — no release';
+  if(type==='aborted') return 'ABORTED PASS — no release';
+  if(type==='ontarget') return 'ON TARGET — good effect';
+  if(type==='dud') return 'DUD — released, no detonation';
+  if(type==='danger') return 'DANGER CLOSE — FRIENDLY effect ⚠';
+  return (type==='wide'?'WIDE — ':'MISS — ')+(dist||0)+'m '+(card||'')+' of target';
+}
 function openStrike(fid, idx){
   const f = state.flights.find(x=>x.id===fid); if(!f) return;
   const L = f.loadout[idx]; if(!L || ordTotal(L)<=0) return;
-  const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
   const patternDef = L.pattern==='pair'?2 : L.pattern==='salvo'?7 : 1;
-  const minStock = Math.min(...withStock.map(x=>x.c));
-  ui._strike = { fid, idx, nPlanes: withStock.length, qtyEach: Math.min(patternDef, minStock), rows:[] };
-  buildStrikeRows();
+  if(perPlaneMode()){
+    const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
+    const minStock = Math.min(...withStock.map(x=>x.c));
+    ui._strike = { fid, idx, mode:'plane', nPlanes: withStock.length, qtyEach: Math.min(patternDef, minStock), rows:[] };
+    buildStrikeRows();
+  } else {
+    const total=ordTotal(L);
+    const sug = suggestOutcome(f, {acc:L.acc, area:L.area, pattern:L.pattern, cat:L.cat});
+    ui._strike = { fid, idx, mode:'flight',
+      rows:[{ pi:null, stock:total, qty:Math.min(patternDef,total), type:sug.type, dist:sug.dist, card:sug.card, pHit:sug.pHit }] };
+  }
   renderStrikeModal();
 }
 function strikePlanes(L, nPlanes){   // planes with stock, most-loaded first, capped to nPlanes
@@ -827,51 +873,44 @@ function buildStrikeRows(){
     return { pi:pl.pi, stock:pl.c, qty:Math.min(s.qtyEach, pl.c), type:sug.type, dist:sug.dist, card:sug.card, pHit:sug.pHit };
   });
 }
-function outcomeText(type, dist, card){
-  if(type==='hung') return 'HUNG ORDNANCE — no release';
-  if(type==='aborted') return 'ABORTED PASS — no release';
-  if(type==='ontarget') return 'ON TARGET — good effect';
-  if(type==='dud') return 'DUD — released, no detonation';
-  if(type==='danger') return 'DANGER CLOSE — FRIENDLY effect ⚠';
-  return (type==='wide'?'WIDE — ':'MISS — ')+(dist||0)+'m '+(card||'')+' of target';
+function strikeRowHtml(r,ri){
+  return `<div class="card" style="margin:6px 0"><div class="bd" style="padding:8px">
+      <div class="flex"><b>${r.pi==null?'Flight (pooled)':'Aircraft '+(r.pi+1)}</b> <span class="muted">${r.stock} rem</span>
+        <span class="sp"></span>
+        <label style="margin:0">drops <input type="number" min="0" max="${r.stock}" id="rQty${ri}" value="${r.qty}" style="width:56px" oninput="app.clampInput(this)"></label></div>
+      <div class="suggest" style="margin:6px 0;padding:8px"><span class="muted" style="font-size:11px">suggested (${Math.round(r.pHit*100)}%): </span><b>${esc(outcomeText(r.type,r.dist,r.card))}</b></div>
+      <div class="flex">
+        <select id="rType${ri}" style="flex:1">${OUTCOME_OPTS(r.type)}</select>
+        <input type="number" id="rDist${ri}" value="${r.dist}" style="width:58px" title="miss distance (m)">
+        <select id="rCard${ri}" title="direction from target">${CARDINALS.map(c=>`<option ${c===r.card?'selected':''}>${c}</option>`).join('')}</select>
+      </div>
+    </div></div>`;
 }
 function renderStrikeModal(){
   const {f,L}=curStrike(); if(!f) return;
   const s=ui._strike;
+  const perLine = L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join('  ');
   const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
   const planeOpts = withStock.map((_,i)=>`<option value="${i+1}" ${i+1===s.nPlanes?'selected':''}>${i+1}</option>`).join('');
-  const perStr = L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join('  ');
-  const rowsHtml = s.rows.map((r,ri)=>`
-    <div class="card" style="margin:6px 0"><div class="bd" style="padding:8px">
-      <div class="flex"><b>Aircraft ${r.pi+1}</b> <span class="muted">${r.stock} rem</span>
-        <span class="sp"></span>
-        <label style="margin:0">drops <input type="number" min="0" max="${r.stock}" id="rQty${ri}" value="${r.qty}" style="width:54px"></label></div>
-      <div class="suggest" style="margin:6px 0;padding:8px"><span class="muted" style="font-size:11px">suggested (${Math.round(r.pHit*100)}%): </span><b>${esc(outcomeText(r.type,r.dist,r.card))}</b></div>
-      <div class="flex">
-        <select id="rType${ri}" style="flex:1">
-          ${['ontarget|On target','miss|Miss','wide|Wide','hung|Hung (no release)','dud|Dud','danger|Danger close (friendly)','aborted|Aborted (no release)']
-            .map(o=>{const p=o.split('|');return `<option value="${p[0]}" ${p[0]===r.type?'selected':''}>${p[1]}</option>`;}).join('')}
-        </select>
-        <input type="number" id="rDist${ri}" value="${r.dist}" style="width:58px" title="miss distance (m)">
-        <select id="rCard${ri}" title="direction from target">${CARDINALS.map(c=>`<option ${c===r.card?'selected':''}>${c}</option>`).join('')}</select>
-      </div>
-    </div></div>`).join('');
-  showModal(`<div class="hd"><h3>Weapon Release — ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
-    <button class="small" onclick="app.closeModal()">✕</button></div>
-   <div class="bd">
-    <div class="kv"><b>Weapon</b> ${esc(L.name)}</div>
-    <div class="kv"><b>Per aircraft</b> <span class="mono">${perStr}</span></div>
-    <div class="kv"><b>Delivery</b> ${SKILLS[f.skill].label} • ${f.operator} • WX ${WEATHER[state.weather].label}${f.aaa?' • <span style="color:#e8846f">UNDER AAA</span>':''}</div>
+  const maxEach = withStock.length?Math.max(...withStock.map(x=>x.c)):0;
+  const controls = s.mode==='plane' ? `
     <div class="grid2" style="margin-top:8px">
       <div class="field"><label>Aircraft employing</label>
         <select id="strkPlanes" onchange="app.rebuildStrike()">${planeOpts}</select></div>
-      <div class="field"><label>Weapons each drops</label>
-        <input type="number" id="strkQty" min="0" value="${s.qtyEach}" onchange="app.rebuildStrike()"></div>
-    </div>
-    <div class="flex"><span class="muted" style="font-size:12px">One suggested outcome per employing aircraft — override any.</span>
-      <span class="sp"></span><button class="small" onclick="app.rebuildStrike()">↻ Re-roll outcomes</button></div>
-    ${rowsHtml || '<div class="muted">No aircraft have this weapon remaining.</div>'}
-    <div class="field" style="margin-top:8px"><label>Note (optional, whole employment)</label>
+      <div class="field"><label>Weapons each drops (max ${maxEach})</label>
+        <input type="number" id="strkQty" min="0" max="${maxEach}" value="${s.qtyEach}" oninput="app.clampInput(this)" onchange="app.rebuildStrike()"></div>
+    </div>` : '';
+  showModal(`<div class="hd"><h3>Weapon Release — ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
+    <button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="kv"><b>Weapon</b> ${esc(L.name)} <span class="muted">— ${ordTotal(L)} total${s.mode==='flight'?', flight-pooled':''}</span></div>
+    ${f.numAircraft>1?`<div class="kv"><b>Per aircraft</b> <span class="mono">${perLine}</span></div>`:''}
+    <div class="kv"><b>Delivery</b> ${SKILLS[f.skill].label} • ${f.operator} • WX ${WEATHER[state.weather].label}${f.aaa?' • <span style="color:#e8846f">UNDER AAA</span>':''}</div>
+    ${controls}
+    <div class="flex" style="margin-top:6px"><span class="muted" style="font-size:12px">${s.mode==='plane'?'One suggested outcome per employing aircraft':'One suggested outcome for the pass'} — override any.</span>
+      <span class="sp"></span><button class="small" onclick="app.rebuildStrike()">↻ Re-roll</button></div>
+    ${s.rows.map(strikeRowHtml).join('') || '<div class="muted">No ordnance remaining.</div>'}
+    <div class="field" style="margin-top:8px"><label>Note (optional)</label>
       <input type="text" id="ovNote" placeholder="e.g. secondary explosion, bunker destroyed"></div>
    </div>
    <div class="ft"><button onclick="app.closeModal()">Cancel</button>
@@ -916,8 +955,11 @@ function openEdit(fid){
   const f = state.flights.find(x=>x.id===fid); if(!f) return;
   const opt=(v,cur,lbl)=>`<option value="${v}" ${v===cur?'selected':''}>${lbl}</option>`;
   let loadRows = (f.loadout||[]).map((L,i)=>{
-    const inputs = (L.perPlane||[]).map((c,pi)=>`<input type="number" min="0" id="edL${i}_${pi}" value="${c}" style="width:50px" title="Aircraft ${pi+1}">`).join(' ');
-    return `<div class="flex" style="flex-wrap:wrap"><span style="flex:1;min-width:130px">${esc(L.name)} <span class="muted">/${L.planeMax} ea</span></span>${inputs}</div>`;
+    if(perPlaneMode()){
+      const inputs = (L.perPlane||[]).map((c,pi)=>`<input type="number" min="0" id="edL${i}_${pi}" value="${c}" style="width:50px" title="Aircraft ${pi+1}">`).join(' ');
+      return `<div class="flex" style="flex-wrap:wrap"><span style="flex:1;min-width:130px">${esc(L.name)} <span class="muted">/${L.planeMax} ea</span></span>${inputs}</div>`;
+    }
+    return `<div class="flex"><span style="flex:1">${esc(L.name)}</span><input type="number" min="0" id="edLT${i}" value="${ordTotal(L)}" style="width:70px"> <span class="muted">/ ${ordMax(L)} total</span></div>`;
   }).join('');
   let gunRows = (f.guns||[]).map((G,i)=>`<div class="flex"><span style="flex:1">${esc(G.name)}</span>
      <select id="edG${i}">${['full','partial','winchester'].map(s=>opt(s,G.state,s)).join('')}</select></div>`).join('');
@@ -1102,22 +1144,37 @@ const app = {
     if(f.stationSec>f.stationMax) f.stationMax=f.stationSec;
     f.aaa=$('#edAaa').value==='yes';
     f.notes=$('#edNotes').value;
-    (f.loadout||[]).forEach((L,i)=>{ (L.perPlane||[]).forEach((c,pi)=>{ const el=$('#edL'+i+'_'+pi); if(el) L.perPlane[pi]=Math.max(0,parseInt(el.value,10)||0); }); });
+    const perFlightTotals={};         // capture edits before any resize
+    (f.loadout||[]).forEach((L,i)=>{
+      if(perPlaneMode()){ (L.perPlane||[]).forEach((c,pi)=>{ const el=$('#edL'+i+'_'+pi); if(el) L.perPlane[pi]=Math.max(0,parseInt(el.value,10)||0); }); }
+      else { const el=$('#edLT'+i); if(el) perFlightTotals[i]=Math.max(0,parseInt(el.value,10)||0); }
+    });
     if(newNa!==f.numAircraft){        // resize per-plane arrays; new aircraft join fully loaded
       (f.loadout||[]).forEach(L=>{ while(L.perPlane.length<newNa) L.perPlane.push(L.planeMax);
         if(L.perPlane.length>newNa) L.perPlane.length=newNa; });
     }
     f.numAircraft=newNa;
+    if(!perPlaneMode()){ (f.loadout||[]).forEach((L,i)=>{ if(perFlightTotals[i]!=null) setFlightTotal(L, perFlightTotals[i]); }); }
     (f.guns||[]).forEach((G,i)=>{ const el=$('#edG'+i); if(el) G.state=el.value; });
     logEvent(f.callsign, 'Edited by GM'+(prev!==f.status?(' — status '+statusLabel(f.status)):''));
     save(); closeModal(); render();
   },
 
-  // strike ordnance — multi-aircraft
+  // strike ordnance — per-aircraft or per-flight
+  clampInput(el){ const mx=parseInt(el.getAttribute('max'),10); let v=parseInt(el.value,10);
+    if(isNaN(v)) return; if(v<0){ el.value=0; return; } if(!isNaN(mx)&&v>mx) el.value=mx; },
   rebuildStrike(){
+    const s=ui._strike;
+    if(s.mode==='flight'){
+      const {f,L}=curStrike(); if(!f) return;
+      const qEl=document.getElementById('rQty0'); let qty=qEl?parseInt(qEl.value,10):s.rows[0].qty; if(isNaN(qty)) qty=s.rows[0].qty;
+      const sug=suggestOutcome(f,{acc:L.acc,area:L.area,pattern:L.pattern,cat:L.cat});
+      s.rows=[{ pi:null, stock:ordTotal(L), qty:clamp(qty,0,ordTotal(L)), type:sug.type,dist:sug.dist,card:sug.card,pHit:sug.pHit }];
+      renderStrikeModal(); return;
+    }
     const p=document.getElementById('strkPlanes'), q=document.getElementById('strkQty');
-    if(p) ui._strike.nPlanes = parseInt(p.value,10)||1;
-    if(q) ui._strike.qtyEach = Math.max(0, parseInt(q.value,10)||0);
+    if(p) s.nPlanes = parseInt(p.value,10)||1;
+    if(q) s.qtyEach = Math.max(0, parseInt(q.value,10)||0);
     buildStrikeRows(); renderStrikeModal();
   },
   commitStrike(){
@@ -1132,14 +1189,22 @@ const app = {
       const dist = dEl?(parseInt(dEl.value,10)||0):r.dist;
       const card = cEl?cEl.value:r.card;
       const released = !(type==='hung'||type==='aborted');
-      const used = released ? clamp(qty,0,L.perPlane[r.pi]) : 0;
-      L.perPlane[r.pi] = Math.max(0, L.perPlane[r.pi]-used);
-      logEvent(f.callsign, 'A'+(r.pi+1)+' '+(used>0?used+'× ':'')+L.name+' — '+outcomeText(type,dist,card)+note+'  ['+L.perPlane[r.pi]+' left on A'+(r.pi+1)+']');
+      if(r.pi==null){        // flight pool
+        const used = released ? drawFromFlight(L, qty) : 0;
+        logEvent(f.callsign, (used>0?used+'× ':'')+L.name+' — '+outcomeText(type,dist,card)+note+'  ['+ordTotal(L)+' left]');
+      } else {               // per aircraft
+        const used = released ? clamp(qty,0,L.perPlane[r.pi]) : 0;
+        L.perPlane[r.pi] = Math.max(0, L.perPlane[r.pi]-used);
+        logEvent(f.callsign, 'A'+(r.pi+1)+' '+(used>0?used+'× ':'')+L.name+' — '+outcomeText(type,dist,card)+note+'  ['+L.perPlane[r.pi]+' left on A'+(r.pi+1)+']');
+      }
     });
     checkWinchester(f);
     save(); closeModal(); render();
     toast('Release logged');
   },
+  setToggle(key,val){ state.tuning[key]=val;
+    if(key==='perPlane') logEvent('GM','Ordnance accounting set to '+(val?'PER AIRCRAFT':'PER FLIGHT'));
+    save(); render(); },
 
   // strike guns
   reSuggestGun(){ const f=state.flights.find(x=>x.id===ui._strikeGun.fid); const G=f.guns[ui._strikeGun.gi];
