@@ -1,7 +1,11 @@
 # Radio Prompt Cards — design plan (rev 2)
 
-> **STATUS: DRAFT — awaiting GM approval. Do not implement until signed off.**
-> Rev 2 incorporates GM answers to D1–D6. Remaining questions at the bottom.
+> **STATUS: APPROVED.** D1–D6 and Q1–Q4 all answered; building P1–P4.
+> Q1: radio panel only (Employ modal stays uncluttered). Q2: voice list accepted, extend later.
+> Q3: character voices — BANDIT stereotypical but fearless; GREASEMONKEY surly;
+> THUNDERBOLT is Lt Col Studebaker-Mackenzie, extreme evangelical, smiting heathens.
+> Q4: ChelteNam moments extend to US voices but only very occasionally.
+> **P5 (template editing UI) deferred** — templates ship as editable data, UI to follow.
 
 ## Scope (settled)
 

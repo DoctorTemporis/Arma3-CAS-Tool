@@ -60,6 +60,24 @@
   .tag.ctl{color:#7fd6c8;border-color:#2c5751}
   .tag.cfg{color:#c8b8e0;border-color:#4a3a5a;background:#1e1826}
   .tag.known{color:#f0c874;border-color:#6a5320;background:#2e2510;font-weight:700}
+  .tag.voice{color:#8fd0b0;border-color:#2c5744}
+  .rtabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+  .rtabs button{font-size:11px;padding:4px 9px;border-radius:12px;letter-spacing:.3px}
+  .rtabs button.on{background:#3a2f12;border-color:var(--amber);color:var(--amber2);font-weight:700}
+  .rbody{background:#0c110b;border:1px solid var(--line);border-radius:6px;padding:12px}
+  .rcall{font-family:"Consolas","Courier New",monospace;font-size:16px;line-height:1.55;
+    color:#eaf3e4}
+  .rcall::before{content:'“'} .rcall::after{content:'”'}
+  .rcall.fac{color:var(--muted);font-size:14px}
+  .rcall.fac em{font-style:italic;font-size:12px;color:#5f6f58}
+  .rcall.fac::before,.rcall.fac::after{content:''}
+  .rstep{display:flex;gap:9px;align-items:flex-start;padding:5px 0;border-bottom:1px dashed #1b241a}
+  .rstep:last-child{border-bottom:none}
+  .rstep.fac{opacity:.75}
+  .rnum{flex:none;width:20px;height:20px;border-radius:50%;background:#243024;color:var(--amber2);
+    font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:3px}
+  .rquip{margin-top:10px;padding:8px 10px;background:#2a2213;border:1px dashed var(--amber);
+    border-radius:5px;color:var(--amber2);font-family:"Consolas",monospace;font-size:14px}
   .unitnote{margin:6px 0;padding:6px 9px;background:#2e2510;border-left:3px solid var(--amber);
     border-radius:3px;font-size:12px;color:var(--amber2);font-style:italic}
   .status{font-weight:700;letter-spacing:.4px;font-size:12px;padding:2px 8px;border-radius:3px}
@@ -196,6 +214,8 @@ const DEFAULT_TUNING = {
   alertExpired:true,               // station time hit zero
   alertArrival:true,               // arrived overhead / awaiting check-in
   alertWinchester:true,            // all ordnance expended
+  // radio
+  quipChance:12,                   // % auto ChelteNam moment (SCAF); US gets a quarter of this
   // composition
   fwBias:55,                       // % chance an "Any" option is fixed-wing (rest rotary)
   rosterChance:25,                 // % chance an option is a known recurring unit
@@ -306,14 +326,14 @@ const DEFAULT_AIRFRAMES = [
 // `elite` exempts the unit from the SCAF accuracy penalty. Persisted with the library.
 const DEFAULT_ROSTER = [
   {id:'bandit', callsign:'BANDIT', flightNo:'FLIGHT', airframeId:'a1', operator:'SCAF',
-   skill:'ace', elite:true, numAircraft:2, weight:3, active:true, sorties:0,
-   notes:'Elite SCAF Skyraider pair. Long relationship with the ground element — no SCAF penalty.'},
+   skill:'ace', elite:true, numAircraft:2, weight:3, active:true, sorties:0, voice:'BANDIT',
+   notes:'Elite SCAF Skyraider pair. Stereotypical to a fault, and utterly fearless. No SCAF penalty.'},
   {id:'greasemonkey', callsign:'GREASEMONKEY', flightNo:'', airframeId:'ah1', operator:'US',
-   skill:'veteran', elite:false, numAircraft:2, weight:3, active:true, sorties:0,
-   notes:'Well-known Cobra gunship section.'},
+   skill:'veteran', elite:false, numAircraft:2, weight:3, active:true, sorties:0, voice:'SURLY',
+   notes:'Well-known Cobra gunship section. Permanently unimpressed with everyone and everything.'},
   {id:'thunderbolt', callsign:'THUNDERBOLT', flightNo:'', airframeId:'b52', operator:'US',
-   skill:'veteran', elite:false, numAircraft:1, weight:0.5, active:true, sorties:0,
-   notes:'Arc Light heavy. Rare, devastating, indiscriminate. Mind the danger-close margin.'}
+   skill:'veteran', elite:false, numAircraft:1, weight:0.5, active:true, sorties:0, voice:'EVANGELICAL',
+   notes:'Lt Col Studebaker-Mackenzie. Arc Light heavy, delivered with scripture. Mind the danger-close margin.'}
 ];
 
 //=================================================================
@@ -368,9 +388,19 @@ function migrateState(){
   });
   if(!state.library.roster) state.library.roster=[];
   DEFAULT_ROSTER.forEach(def=>{
-    if(!state.library.roster.some(u=>u.id===def.id)) state.library.roster.push(structuredClone(def));
+    const cur=state.library.roster.find(u=>u.id===def.id);
+    if(!cur) state.library.roster.push(structuredClone(def));
+    else if(!cur.voice && def.voice) cur.voice=def.voice;      // adopt the new character voices
   });
   state.library.roster.forEach(u=>{ if(u.sorties==null) u.sorties=0; if(u.active==null) u.active=true; });
+  if(!state.library.quips) state.library.quips = structuredClone(DEFAULT_QUIPS);
+  // flights created before the radio feature need voices/abort codes/headings
+  (state.flights||[]).forEach(f=>{
+    if(!f.voice) f.voice = assignVoice(f.operator, f.rosterId ? (state.library.roster||[]).find(u=>u.id===f.rosterId) : null);
+    if(!f.abortCode) f.abortCode = pick(ABORT_WORDS);
+    if(!f.runIn){ const i=rndInt(0,CARDINALS.length-1);
+      f.runIn=CARDINALS[i]; f.runOut=CARDINALS[(i+8)%CARDINALS.length]; }
+  });
   // airframes: single `load` → named `loadouts`. Known default airframes are upgraded to the
   // new default configs; custom airframes keep their load as a single "Standard" config.
   const defById = Object.fromEntries(DEFAULT_AIRFRAMES.map(a=>[a.id,a]));
@@ -633,6 +663,7 @@ function genFlight(opts={}){
   });
 
   const cs = unit ? {words:unit.callsign, number:(unit.flightNo||spokenTwoDigit())} : makeCallsign();
+  const runHdg = rndInt(0, CARDINALS.length-1);
   return {
     id: state.seq++,
     callsign: cs.words,
@@ -640,6 +671,9 @@ function genFlight(opts={}){
     airframeId: af.id, airframeName: af.name, type: af.type, fac:!!af.fac,
     configName: cfg.name,
     rosterId: unit?unit.id:null, elite: unit?!!unit.elite:false, unitNotes: unit?(unit.notes||''):'',
+    voice: assignVoice(operator, unit), abortCode: pick(ABORT_WORDS),
+    // ingress heading with a roughly opposite egress; GM can change either
+    runIn: CARDINALS[runHdg], runOut: CARDINALS[(runHdg+8)%CARDINALS.length],
     numAircraft, operator, skill, control: state.control,
     etaMin, etaSec: etaMin*60,
     stationMin, stationSec: stationMin*60, stationMax: stationMin*60,
@@ -654,6 +688,248 @@ function generateOptions(n, opts){
   for(let i=0;i<n;i++){ const f=genFlight(opts); state.flights.push(f); out.push(f); }
   logEvent(state.control,'Passed '+n+' CAS option(s) to FAC'+(opts.type?(' ('+opts.type+')'):''));
   save(); render();
+}
+
+//=================================================================
+//  RADIO PROMPT CARDS — spoken text the GM reads aloud over ACRE2.
+//  Generated from LIVE flight state, so ordnance/playtime are always current.
+//=================================================================
+const ABORT_WORDS = ['HAYSTACK','CIDER','MILKCHURN','TRACTOR','SCRUMPY','GOATSHED','WELLINGTON',
+  'HEDGEROW','PASTY','CLOTTED','BARNDOOR','SILAGE','THATCH','BRAMBLE','CHEDDAR','WURZEL'];
+
+// spoken forms — fall back to the display name when absent, never block
+const WEAPON_SPOKEN = {
+  mk81:'Mark eight-one', mk82:'Mark eight-two', snake:'Snakeye', mk83:'Mark eight-three',
+  mk84:'Mark eight-four', m117:'seven-fifty pounder', napalm:'napalm', cbu:'cluster',
+  ffar:'two point seven five rockets', zuni:'Zuni', gun20:'twenty mike-mike',
+  gunpod:'twenty mike-mike pod', minigun:'minigun', hrocket:'rockets', gl40:'forty mike-mike',
+  minigun3:'miniguns', flare:'flares'
+};
+const AIRFRAME_SPOKEN = {   // [singular, plural]
+  a1:['Skyraider','Skyraiders'], a4:['Skyhawk','Skyhawks'], a6:['Intruder','Intruders'],
+  a7:['Corsair','Corsairs'], f100:['Super Sabre','Super Sabres'], f105:['Thud','Thuds'],
+  f4:['Phantom','Phantoms'], a37:['Dragonfly','Dragonflies'], f5:['Freedom Fighter','Freedom Fighters'],
+  ov10:['Bronco','Broncos'], o2:['Skymaster','Skymasters'], uh1c:['Huey gunship','Huey gunships'],
+  uh1d:['Bushranger','Bushrangers'], ah1:['Cobra','Cobras'], ach47:['Chinook gunship','Chinook gunships'],
+  oh6:['Loach','Loaches'], ac47:['Spooky','Spookies'], b52:['BUFF','BUFFs']
+};
+
+const VOICES = {
+  KANSAS:{label:'Kansas', side:'US'},        ALABAMA:{label:'Alabama', side:'US'},
+  TEXAS:{label:'Texas', side:'US'},          CALIFORNIA:{label:'California', side:'US'},
+  JERSEY:{label:'New Jersey', side:'US'},
+  SOMERSET:{label:'Somerset', side:'SCAF'},  DEVON:{label:'Devon', side:'SCAF'},
+  BRISTOL:{label:'Bristol', side:'SCAF'},
+  // character voices — assigned to known units, never rolled at random
+  BANDIT:{label:'Bandit (bold West Country)', side:'SCAF', character:true},
+  SURLY:{label:'Surly', side:'US', character:true},
+  EVANGELICAL:{label:'Lt Col Studebaker-Mackenzie', side:'US', character:true}
+};
+
+// {CONTROL} {CS} {SHIPWORD} {TYPE} {ORD} {PLAY} {ABORT} {IN} {OUT} {AWAY}
+const CALL_TEMPLATES = {
+  NEUTRAL:{
+    checkin:"{CONTROL}, {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}.",
+    talkon:"{CS}, ready for your talk-on.", run_in:"{CS}, in from the {IN}.",
+    run_5:"Five seconds.", run_away:"{AWAY}.", run_off:"Off to the {OUT}.",
+    bda:"{CS}, say BDA.", winchester:"{CS} is winchester.",
+    bingo:"{CS} bingo fuel, returning to base.", aaa:"{CS} taking fire."},
+  KANSAS:{
+    checkin:"{CONTROL}, {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}.",
+    talkon:"{CS}. Go ahead with your talk-on.", run_in:"{CS}, in from the {IN}.",
+    run_5:"Five seconds.", run_away:"{AWAY}.", run_off:"Off to the {OUT}.",
+    bda:"{CS}. How'd that look?", winchester:"{CS} winchester. Nothing left to give you.",
+    bingo:"{CS} bingo fuel. We're headed home.", aaa:"{CS} taking fire from below."},
+  ALABAMA:{
+    checkin:"{CONTROL}, this here's {CS}, {SHIPWORD} {TYPE}. We're carryin' {ORD}. 'Bout {PLAY} minutes of playtime. Abort word's {ABORT}.",
+    talkon:"{CS}. Go on an' talk us onto it.", run_in:"{CS}, comin' in from the {IN}.",
+    run_5:"Five seconds, hold what ya got.", run_away:"{AWAY}, y'all.", run_off:"Off to the {OUT}.",
+    bda:"{CS}. Y'all see anything good down there?", winchester:"{CS} is winchester — plumb out.",
+    bingo:"{CS} bingo fuel. Gotta head on back.", aaa:"{CS} — we're takin' fire down here!"},
+  TEXAS:{
+    checkin:"{CONTROL}, {CS} checkin' in, {SHIPWORD} {TYPE}. We brought {ORD}. {PLAY} minutes on station. Abort's {ABORT}.",
+    talkon:"{CS}. Talk us on, we're lookin'.", run_in:"{CS}, in hot from the {IN}.",
+    run_5:"Five seconds.", run_away:"{AWAY} — that's a big one!", run_off:"Off to the {OUT}.",
+    bda:"{CS}. Tell me we got somethin'.", winchester:"{CS} winchester. Ain't got a thing left.",
+    bingo:"{CS} bingo. Headin' for the barn.", aaa:"{CS} takin' fire, and I do not care for it!"},
+  CALIFORNIA:{
+    checkin:"{CONTROL}, {CS} cruisin' in, {SHIPWORD} {TYPE}. We got {ORD}. {PLAY} minutes of playtime. Abort's {ABORT}.",
+    talkon:"{CS}. Yeah, go ahead an' talk us on.", run_in:"{CS}, rollin' in from the {IN}.",
+    run_5:"Five seconds, man.", run_away:"{AWAY}.", run_off:"Off to the {OUT}, real smooth.",
+    bda:"{CS}. So uh, how'd that work out?", winchester:"{CS} is winchester. All out, man.",
+    bingo:"{CS} bingo fuel. We're gonna head back.", aaa:"{CS} — whoa, we're takin' fire!"},
+  JERSEY:{
+    checkin:"{CONTROL}, {CS}, {SHIPWORD} {TYPE}. We got {ORD}. Playtime {PLAY}. Abort code {ABORT}, you got that?",
+    talkon:"{CS}. Talk us on already.", run_in:"{CS}, in from the {IN}.",
+    run_5:"Five seconds.", run_away:"{AWAY}!", run_off:"Off to the {OUT}.",
+    bda:"{CS}. So? What're we lookin' at?", winchester:"{CS} winchester. That's it, we're done.",
+    bingo:"{CS} bingo. We're outta here.", aaa:"{CS} takin' fire! Somebody down there don't like us!"},
+  SOMERSET:{
+    checkin:"Mornin' {CONTROL}, this'm {CS}, {SHIPWORD} {TYPE}. Got {ORD} aboard. Playtime's {PLAY} minutes, moi lover. Abort word's {ABORT}.",
+    talkon:"{CS} 'ere. Talk us on then, if you'm ready.", run_in:"{CS}, comin' in from the {IN}.",
+    run_5:"Five second, moi lover.", run_away:"{AWAY}!", run_off:"Off to the {OUT}, proper job.",
+    bda:"{CS}. Did us do any good down there?", winchester:"{CS} be winchester. Empty as a dry cider barrel.",
+    bingo:"{CS} bingo fuel. Off home for tea.", aaa:"{CS} — they'm shootin' at us!"},
+  DEVON:{
+    checkin:"'Ello {CONTROL}, {CS} 'ere, {SHIPWORD} {TYPE}. We'm carryin' {ORD}. Playtime {PLAY} minutes. Abort word {ABORT}.",
+    talkon:"{CS}. Go on then, tell us where 'tis.", run_in:"{CS}, in from the {IN}.",
+    run_5:"Five second.", run_away:"{AWAY}, my 'andsome!", run_off:"Off to the {OUT}.",
+    bda:"{CS}. Any good, that?", winchester:"{CS} be winchester, nothin' left at all.",
+    bingo:"{CS} bingo. Headin' back to the farm.", aaa:"{CS} — takin' fire, they'm proper cross!"},
+  BRISTOL:{
+    checkin:"Alright {CONTROL}, {CS} 'ere mind, {SHIPWORD} {TYPE}. Got {ORD}. Playtime {PLAY}. Abort word's {ABORT}, mind.",
+    talkon:"{CS}. Go on, talk us on.", run_in:"{CS}, in from the {IN}, mind.",
+    run_5:"Five seconds.", run_away:"{AWAY}!", run_off:"Off to the {OUT}.",
+    bda:"{CS}. That do anythin'?", winchester:"{CS} winchester, gert empty.",
+    bingo:"{CS} bingo fuel, headin' back.", aaa:"{CS} takin' fire!"},
+  BANDIT:{
+    checkin:"{CONTROL}! {CS} 'ere, {SHIPWORD} {TYPE}, an' us bain't afeared o' nothin'. Got {ORD}. Playtime {PLAY} minutes. Abort word's {ABORT} — but us won't be needin' it.",
+    talkon:"{CS}. Talk us on, an' don't spare the detail — us'll go in close.",
+    run_in:"{CS}, in from the {IN}, low an' proper!", run_5:"Five second — steady now!",
+    run_away:"{AWAY}! 'Ave it!", run_off:"Off to the {OUT}. Us'll come round again, no bother.",
+    bda:"{CS}. Did us flatten 'un? Say the word an' us'll go again.",
+    winchester:"{CS} be winchester — but us'll stay an' make dry passes if you'm needin' it.",
+    bingo:"{CS} bingo fuel. Reluctant to leave 'ee, but us must.",
+    aaa:"{CS} takin' fire — don't 'ee worry, us've had worse off the goats!"},
+  SURLY:{
+    checkin:"{CONTROL}. {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}. Let's get on with it.",
+    talkon:"{CS}. Talk. On. Any time you like.", run_in:"{CS}, in from the {IN}.",
+    run_5:"Five.", run_away:"{AWAY}.", run_off:"Off {OUT}.",
+    bda:"{CS}. Well? Did that fix it or not?", winchester:"{CS} winchester. Told you that wouldn't last.",
+    bingo:"{CS} bingo. Should've called us sooner.", aaa:"{CS} taking fire. Obviously."},
+  EVANGELICAL:{
+    checkin:"{CONTROL}, this is Lieutenant Colonel Studebaker-Mackenzie, {CS}, {SHIPWORD} {TYPE}, bearing {ORD} for the smiting of the heathen. Playtime {PLAY} minutes, the Lord willing. Abort word is {ABORT}.",
+    talkon:"{CS}. Point me to the wicked, brother, and I shall visit judgement upon them.",
+    run_in:"{CS}, in from the {IN}, and the Lord goes with us.",
+    run_5:"Five seconds until the reckoning.", run_away:"{AWAY}! Let the heathen tremble!",
+    run_off:"Off to the {OUT}. It is finished.",
+    bda:"{CS}. Speak, brother — did the fire of righteousness find its mark?",
+    winchester:"{CS} is winchester. We have delivered all the judgement we carry.",
+    bingo:"{CS} bingo fuel. We ascend, and shall return.",
+    aaa:"{CS} taking fire! The heathen are wroth, but I fear them not!"}
+};
+
+// ChelteNam moments — comedy interjections (D6). cat: ordnance | nav | direction | general
+const DEFAULT_QUIPS = [
+  {cat:'ordnance', side:'SCAF', text:"Well, I got some big bombs an' some whooshy stuff, mebbe rockets."},
+  {cat:'ordnance', side:'SCAF', text:"Hold on, let I look... there's summat under the wing, definitely."},
+  {cat:'ordnance', side:'SCAF', text:"Us has got the loud ones an' the very loud ones."},
+  {cat:'ordnance', side:'SCAF', text:"Two of the fat 'uns an' a load o' the pointy 'uns."},
+  {cat:'nav', side:'SCAF', text:"Can you tell I where that is relative to my uncle Jeb's goat farm?"},
+  {cat:'nav', side:'SCAF', text:"Is that near the big tree? There's a big tree round 'ere somewhere."},
+  {cat:'nav', side:'SCAF', text:"Which one's the river an' which one's the road? They'm both wiggly."},
+  {cat:'direction', side:'SCAF', text:"Which way is east again? Oh — way the sun comes up."},
+  {cat:'direction', side:'SCAF', text:"North's the top one, ennit?"},
+  {cat:'direction', side:'SCAF', text:"I'll come in from... the way I'm already pointin', how's that?"},
+  {cat:'general', side:'SCAF', text:"Sorry, say again — I were lookin' at a tractor."},
+  {cat:'general', side:'SCAF', text:"Say again? Had the radio on the wrong knob."},
+  {cat:'general', side:'SCAF', text:"Roight. An' what's a 'target', exactly?"},
+  {cat:'general', side:'SCAF', text:"Us'll have a go, but I be due back for milkin'."},
+  {cat:'general', side:'US', text:"Uh, say again? I was thinkin' about lunch."},
+  {cat:'direction', side:'US', text:"Which one's east? ...I'm kidding. Mostly."},
+  {cat:'general', side:'US', text:"You want that hit now, or after my coffee?"}
+];
+
+//---- spoken-number helpers ----
+const SMALL_WORDS=['zero','one','two','three','four','five','six','seven','eight','nine','ten',
+  'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+const TENS_WORDS=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+function spokenCount(n){
+  n=Math.max(0,Math.round(n));
+  if(n<20) return SMALL_WORDS[n];
+  if(n<100){ const t=Math.floor(n/10), u=n%10; return TENS_WORDS[t]+(u?'-'+SMALL_WORDS[u]:''); }
+  if(n<1000){ const h=Math.floor(n/100), r=n%100;
+    return SMALL_WORDS[h]+' hundred'+(r?' '+spokenCount(r):''); }
+  return String(n);
+}
+const CARDINAL_SPOKEN = {N:'north', NNE:'north-north-east', NE:'north-east', ENE:'east-north-east',
+  E:'east', ESE:'east-south-east', SE:'south-east', SSE:'south-south-east', S:'south',
+  SSW:'south-south-west', SW:'south-west', WSW:'west-south-west', W:'west',
+  WNW:'west-north-west', NW:'north-west', NNW:'north-north-west'};
+function cardSpoken(c){ return CARDINAL_SPOKEN[c] || String(c||'').toLowerCase(); }
+// tidy up sentence casing so templates read naturally however they're assembled
+function tidySpoken(s){
+  return s.replace(/\s+/g,' ').trim()
+          .replace(/(^|[.!?]\s+)([a-z])/g, (m,p,c)=>p+c.toUpperCase());
+}
+function spokenDigits(n){ return String(Math.max(0,Math.round(n))).split('')
+  .map(d=>DIGIT_WORDS[+d].toLowerCase()).join(' '); }
+function wSpoken(wid){ return WEAPON_SPOKEN[wid] || (W(wid).name||wid); }
+function afSpoken(f, plural){
+  const m = AIRFRAME_SPOKEN[f.airframeId];
+  if(m) return plural ? m[1] : m[0];
+  const n = (f.airframeName||'').replace(/\s*\(.*\)$/,'').split(' ').slice(-1)[0] || f.airframeName;
+  return plural ? n+'s' : n;
+}
+function shipWord(f){ return f.numAircraft>1
+  ? 'flight of '+spokenCount(f.numAircraft) : 'single'; }
+// live ordnance, spoken — reflects what is actually left on the jets right now
+function ordnanceSpoken(f){
+  const parts=[];
+  (f.loadout||[]).forEach(L=>{ const tot=ordTotal(L); if(tot<=0) return;
+    // "four by Mark eight-two" for discrete stores; rockets/flares are counted without "by"
+    const bulk = (L.cat==='rocket'||L.cat==='flare');
+    parts.push(spokenCount(tot)+(bulk?' ':' by ')+wSpoken(L.w)); });
+  (f.guns||[]).forEach(G=>{ if(G.state!=='winchester')
+    parts.push(G.state==='partial' ? ('partial '+wSpoken(G.w)) : wSpoken(G.w)); });
+  if(!parts.length) return 'no ordnance remaining';
+  if(parts.length===1) return parts[0];
+  return parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1];
+}
+function awayWord(f){
+  const cats=(f.loadout||[]).filter(L=>ordTotal(L)>0).map(L=>L.cat);
+  if(cats.includes('rocket')) return 'Rockets away';
+  if(cats.includes('napalm')) return 'Nape away';
+  if(cats.some(c=>c==='bomb'||c==='cbu')) return 'Bombs away';
+  return 'Weapon away';
+}
+function assignVoice(operator, unit){
+  if(unit && unit.voice && VOICES[unit.voice]) return unit.voice;
+  const pool=Object.keys(VOICES).filter(k=>!VOICES[k].character && VOICES[k].side===operator);
+  return pool.length ? pick(pool) : 'NEUTRAL';
+}
+function callTemplate(voice, id){
+  const v=CALL_TEMPLATES[voice]||{};
+  return v[id] || CALL_TEMPLATES.NEUTRAL[id] || '';
+}
+function renderCall(f, id){
+  let s = callTemplate(f.voice, id);
+  const mins = Math.max(0, Math.round(f.stationSec/60));
+  return tidySpoken(s.replace(/{CONTROL}/g, f.control||state.control)
+          .replace(/{CS}/g, (f.callsign+' '+f.flightNo).trim())
+          .replace(/{SHIPWORD}/g, shipWord(f))
+          .replace(/{TYPE}/g, afSpoken(f, f.numAircraft>1))
+          .replace(/{ORD}/g, ordnanceSpoken(f))
+          .replace(/{PLAY}/g, spokenDigits(mins))
+          .replace(/{ABORT}/g, f.abortCode||'—')
+          .replace(/{IN}/g, cardSpoken(f.runIn||'S'))
+          .replace(/{OUT}/g, cardSpoken(f.runOut||'N'))
+          .replace(/{AWAY}/g, awayWord(f)));
+}
+// control agency reading the whole availability list to the FAC
+function optionsScript(){
+  const avail = state.flights.filter(f=>f.status==='available');
+  if(!avail.length) return 'No options pending — generate some first.';
+  const ord=['First','Second','Third','Fourth','Fifth','Sixth'];
+  const items = avail.map((f,i)=>
+    `${ord[i]||'Next'}, ${(f.callsign+' '+f.flightNo).trim()}, ${shipWord(f)} ${afSpoken(f,f.numAircraft>1)}`
+    + (f.configName?`, ${f.configName.toLowerCase()} fit`:'')
+    + `, overhead in ${spokenDigits(f.etaMin)} minutes, ${spokenDigits(f.stationMin)} minutes playtime.`);
+  return tidySpoken(`${state.control}. ${spokenCount(avail.length)} flight${avail.length>1?'s':''} for you. `
+       + items.join(' ') + ' Say preference.');
+}
+function pickQuip(f, cat){
+  const pool=(state.library.quips||DEFAULT_QUIPS).filter(q=>
+    (!q.side || q.side===f.operator) && (!cat || q.cat===cat));
+  const any=(state.library.quips||DEFAULT_QUIPS).filter(q=>!q.side || q.side===f.operator);
+  const use = pool.length?pool:any;
+  return use.length ? pick(use).text : null;
+}
+// auto-roll a ChelteNam moment; US voices only very occasionally (Q4)
+function maybeQuip(f, cat){
+  const base=(T().quipChance==null?12:T().quipChance);
+  const chance = f.operator==='SCAF' ? base : base*0.25;
+  return (Math.random()*100 < chance) ? pickQuip(f,cat) : null;
 }
 
 //=================================================================
@@ -764,6 +1040,7 @@ function flightCard(f){
   </div><div class="bd">`;
 
   if(f.alertMsg) h += `<div class="alertbar"><span>⚠ ${esc(f.alertMsg)}</span><span class="sp"></span>
+    <button class="small" onclick="app.radio(${f.id},'${defaultCallFor(f)}')">📻</button>
     <button class="small" onclick="app.ackAlert(${f.id})">Acknowledge</button></div>`;
 
   h += `<div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}${f.configName?` <span class="tag cfg">${esc(f.configName)}</span>`:''}</div>`;
@@ -798,6 +1075,7 @@ function flightCard(f){
   if(f.notes) h += `<div class="kv" style="margin-top:8px"><b>Notes</b> ${esc(f.notes)}</div>`;
 
   h += '<div class="flight-actions">';
+  h += `<button class="primary" onclick="app.radio(${f.id})">📻 Radio</button>`;
   if(f.status==='inbound') h += `<button onclick="app.arriveNow(${f.id})">Arrived Overhead (skip transit)</button>`;
   if(isCheckin) h += `<button class="primary" onclick="app.checkIn(${f.id})">✓ Check In — clear hot</button>`;
   if(onstn||isCheckin){
@@ -849,7 +1127,11 @@ function viewRequest(){
     </div>
   </div></div>`;
 
-  h += '<h2 style="margin:14px 0 10px">Available Options <span class="muted">('+avail.length+')</span></h2>';
+  h += `<div class="flex" style="margin:14px 0 10px">
+    <h2>Available Options <span class="muted">(${avail.length})</span></h2>
+    <span class="sp"></span>
+    ${avail.length?`<button class="primary" onclick="app.radioOptions()">📻 Read options to FAC</button>`:''}
+  </div>`;
   if(!avail.length) h += '<div class="empty">No pending options. Generate some above.</div>';
   else h += '<div class="row">'+avail.map(availCard).join('')+'</div>';
   return h;
@@ -930,7 +1212,9 @@ function viewTuning(){
         ${checkRow('alertExpired','Alert on station time expired (bingo)')}
         ${checkRow('alertArrival','Alert on arrival overhead / check-in due')}
         ${checkRow('alertWinchester','Alert on winchester')}
+        ${sliderRow('quipChance','Auto "ChelteNam moment" chance (SCAF)',0,100,1,'%')}
       </div>
+      <div class="hint">ChelteNam moments are always available on demand from the radio panel; this is only how often one is offered automatically. US voices get a quarter of this rate.</div>
     </div></div>`;
 
   h += tuneGroup('System', toggleRow('perPlane','Ordnance accounting',
@@ -1310,6 +1594,81 @@ function openAirframeEditor(id, useExisting){
      <button class="primary" onclick="app.saveAirframe('${a.id}',${isNew})">Save airframe</button></div>`);
 }
 
+// ---- RADIO PANEL: the call you need now, plus the rest one click away ----
+const RADIO_CALLS = [
+  {id:'checkin',    label:'CHECK-IN',     quip:'ordnance'},
+  {id:'talkon',     label:'TALK-ON',      quip:'nav'},
+  {id:'run',        label:'ATTACK RUN',   quip:'direction'},
+  {id:'bda',        label:'BDA',          quip:'general'},
+  {id:'winchester', label:'WINCHESTER'},
+  {id:'bingo',      label:'BINGO / RTB'},
+  {id:'aaa',        label:'TAKING FIRE'}
+];
+// which call does this flight's current state imply?
+function defaultCallFor(f){
+  if(f.status==='inbound'||f.status==='checkin') return 'checkin';
+  if(f.aaa) return 'aaa';
+  const ordLeft=(f.loadout||[]).some(L=>ordTotal(L)>0)||(f.guns||[]).some(G=>G.state!=='winchester');
+  if(f.status==='onstation'){
+    if(!ordLeft) return 'winchester';
+    if(f.stationSec<=180) return 'bingo';
+    return 'run';
+  }
+  return 'bingo';
+}
+function radioLine(txt){ return `<div class="rcall">${esc(txt)}</div>`; }
+function renderRadioBody(f, id){
+  const q = ui._radio && ui._radio.quip;
+  if(id==='run'){
+    const sel=(cur,which)=>`<select onchange="app.radioHdg(${f.id},'${which}',this.value)">
+      ${CARDINALS.map(c=>`<option ${c===cur?'selected':''}>${c}</option>`).join('')}</select>`;
+    return `<div class="flex" style="gap:10px;margin-bottom:8px;font-size:12px;color:var(--muted)">
+        <span>In from ${sel(f.runIn,'runIn')}</span><span>Off to ${sel(f.runOut,'runOut')}</span>
+        <span class="sp"></span><span>abort word <b class="mono" style="color:var(--amber2)">${esc(f.abortCode||'')}</b></span></div>
+      <div class="rstep"><span class="rnum">1</span>${radioLine(renderCall(f,'run_in'))}</div>
+      <div class="rstep"><span class="rnum">2</span>${radioLine(renderCall(f,'run_5'))}</div>
+      <div class="rstep fac"><span class="rnum">—</span><div class="rcall fac">"Cleared hot."&nbsp; <em>— FAC's line, the player says this</em></div></div>
+      <div class="rstep"><span class="rnum">3</span>${radioLine(renderCall(f,'run_away'))}</div>
+      <div class="rstep"><span class="rnum">4</span>${radioLine(renderCall(f,'run_off'))}</div>
+      ${q?`<div class="rquip">🎲 ${esc(q)}</div>`:''}`;
+  }
+  return radioLine(renderCall(f,id)) + (q?`<div class="rquip">🎲 ${esc(q)}</div>`:'');
+}
+function openRadioPanel(fid, callId){
+  const f=state.flights.find(x=>x.id===fid); if(!f) return;
+  const open = callId || (ui._radio && ui._radio.fid===fid ? ui._radio.call : null) || defaultCallFor(f);
+  if(!ui._radio || ui._radio.fid!==fid || ui._radio.call!==open) ui._radio={fid, call:open, quip:null};
+  const meta=RADIO_CALLS.find(c=>c.id===open)||RADIO_CALLS[0];
+  const v=VOICES[f.voice]||{label:f.voice||'—'};
+  showModal(`<div class="hd"><h3>📻 ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
+      <button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="flex" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      ${f.rosterId?'<span class="tag known">★ KNOWN</span>':''}
+      <span class="tag ${f.operator==='SCAF'?'scaf':'us'}">${f.operator}</span>
+      <span class="tag voice">🗣 ${esc(v.label)}</span>
+      <span class="muted" style="font-size:12px">${f.numAircraft}× ${esc(f.airframeName)}${f.configName?' • '+esc(f.configName):''}</span>
+    </div>
+    <div class="rtabs">${RADIO_CALLS.map(c=>
+      `<button class="${c.id===open?'on':''}" onclick="app.radio(${f.id},'${c.id}')">${c.label}</button>`).join('')}</div>
+    <div class="rbody">${renderRadioBody(f, open)}</div>
+    <div class="flex" style="margin-top:10px">
+      <button class="small" onclick="app.radioQuip(${f.id},'${meta.quip||'general'}')">🎲 ChelteNam moment</button>
+      ${ui._radio.quip?`<button class="small" onclick="app.radioQuip(${f.id},null)">Straight version</button>`:''}
+      <span class="sp"></span>
+      <span class="muted" style="font-size:11px">reads from live state — ordnance and playtime are current</span>
+    </div>
+   </div>
+   <div class="ft"><button onclick="app.closeModal()">Close</button></div>`);
+}
+function openOptionsScript(){
+  showModal(`<div class="hd"><h3>📻 ${esc(state.control)} — options to FAC</h3>
+      <button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd"><div class="rbody">${radioLine(optionsScript())}</div>
+     <div class="hint" style="margin-top:8px">Read as the control agency. Regenerate after adding or discarding options.</div></div>
+   <div class="ft"><button onclick="app.closeModal()">Close</button></div>`);
+}
+
 // known-unit (roster) editor
 function openUnitEditor(id, seed){
   const isNew=!id;
@@ -1331,6 +1690,9 @@ function openUnitEditor(id, seed){
       <div class="field"><label>Aircraft in flight</label><input type="number" min="1" id="uNa" value="${u.numAircraft||1}"></div>
       <div class="field"><label>Roster weight (0 = never)</label><input type="number" min="0" step="0.05" id="uWt" value="${u.weight==null?1:u.weight}"></div>
       <div class="field"><label>Sorties flown</label><input type="number" min="0" id="uSo" value="${u.sorties||0}"></div>
+      <div class="field"><label>Voice (blank = random per appearance)</label><select id="uVoice">
+        <option value="">— random —</option>
+        ${Object.entries(VOICES).map(([k,v])=>opt(k,u.voice||'',v.label+(v.character?' ★':'')+' ['+v.side+']')).join('')}</select></div>
     </div>
     <div class="flex" style="gap:16px">
       <label style="margin:0" id="uEliteWrap"><input type="checkbox" id="uElite" ${u.elite?'checked':''}> Elite (exempt from SCAF accuracy penalty)</label>
@@ -1569,6 +1931,18 @@ const app = {
   setToggle(key,val){ state.tuning[key]=val;
     if(key==='perPlane') logEvent('GM','Ordnance accounting set to '+(val?'PER AIRCRAFT':'PER FLIGHT'));
     save(); render(); },
+  // radio
+  radio(fid, callId){ if(ui._radio) ui._radio.quip=null; openRadioPanel(fid, callId); },
+  radioOptions(){ openOptionsScript(); },
+  radioQuip(fid, cat){
+    const f=state.flights.find(x=>x.id===fid); if(!f)return;
+    ui._radio.quip = cat ? pickQuip(f, cat) : null;
+    openRadioPanel(fid, ui._radio.call);
+  },
+  radioHdg(fid, which, val){
+    const f=state.flights.find(x=>x.id===fid); if(!f)return;
+    f[which]=val; save(); openRadioPanel(fid, ui._radio.call);
+  },
   ackAlert(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return;
     f.alertMsg=null; clearTimeout(_titleT); document.title=BASE_TITLE; save(); render(); },
   testAlert(){ audioCtx(); playAlertSound('test');
@@ -1621,6 +1995,7 @@ const app = {
       weight:(()=>{const v=parseFloat($('#uWt').value); return isNaN(v)?1:Math.max(0,v);})(),
       sorties:Math.max(0,parseInt($('#uSo').value,10)||0),
       elite: isUS ? false : $('#uElite').checked,     // never persist elite on a US unit
+      voice: $('#uVoice').value || null,
       active:$('#uActive').checked, notes:$('#uNotes').value.trim() };
     if(!state.library.roster) state.library.roster=[];
     if(isNew) state.library.roster.push(u);
@@ -1663,7 +2038,7 @@ const app = {
   delWeapon(id){ if(!confirm('Delete weapon?'))return; delete state.library.weapons[id]; save(); render(); },
   resetLibrary(){ if(!confirm('Reset airframes, weapons AND the known-unit roster to defaults?\nThis discards custom units and their sortie counts. (Flights/log kept.)'))return;
     state.library={weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES),
-                   roster:structuredClone(DEFAULT_ROSTER)};
+                   roster:structuredClone(DEFAULT_ROSTER), quips:structuredClone(DEFAULT_QUIPS)};
     save(); render(); toast('Library reset'); },
 
   // session/data
@@ -1689,7 +2064,8 @@ const app = {
   wipeAll(){ if(!confirm('WIPE EVERYTHING including your custom library?'))return;
     localStorage.removeItem(LS_KEY);
     state={weather:'good',control:'Monkey Mountain',flights:[],log:[],seq:1,tuning:structuredClone(DEFAULT_TUNING),
-      library:{weapons:structuredClone(DEFAULT_WEAPONS),airframes:structuredClone(DEFAULT_AIRFRAMES),roster:structuredClone(DEFAULT_ROSTER)}};
+      library:{weapons:structuredClone(DEFAULT_WEAPONS),airframes:structuredClone(DEFAULT_AIRFRAMES),
+        roster:structuredClone(DEFAULT_ROSTER),quips:structuredClone(DEFAULT_QUIPS)}};
     ui.tab='ops'; save(); render(); renderWx(); }
 };
 
