@@ -160,6 +160,10 @@
 <header>
   <h1>CHELTENAM — CAS / FAC TRACKER <small>Tactical Distractions • on-call immediate air support</small></h1>
   <div class="ctrl">
+    <label style="margin:0">FAC (PLAYER)</label>
+    <select id="facSel" onchange="app.setFac(this.value)"></select>
+  </div>
+  <div class="wx">
     <label style="margin:0">CONTROL AGENCY</label>
     <select id="ctrlSel" onchange="app.setControl(this.value)">
       <option>Monkey Mountain</option>
@@ -191,6 +195,9 @@
 //=================================================================
 const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const CONTROLS = ['Monkey Mountain','Signal Hill','Sandy Control','Pedro Control'];
+// FAC callsigns — the PLAYER. Comms run control-agency -> FAC and CAS flight -> FAC,
+// so this is who every generated call is addressed to.
+const DEFAULT_FACS = ['CARBON OUTLAW','ENDGAME RED FOXTROT'];
 const SKILLS = {
   rookie:{label:'Rookie', v:0.38}, regular:{label:'Regular', v:0.55},
   veteran:{label:'Veteran', v:0.74}, ace:{label:'Ace', v:0.90}
@@ -346,12 +353,13 @@ const LS_KEY = 'arma3_cas_tracker_v1';
 let state = {
   weather:'good',
   control:'Monkey Mountain',
+  fac:'CARBON OUTLAW',
   flights:[],
   log:[],
   seq:1,
   tuning:structuredClone(DEFAULT_TUNING),
   library:{ weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES),
-            roster:structuredClone(DEFAULT_ROSTER) }
+            roster:structuredClone(DEFAULT_ROSTER), facs:structuredClone(DEFAULT_FACS) }
 };
 let ui = { tab:'ops' };
 
@@ -404,6 +412,15 @@ function migrateState(){
   Object.entries(DEFAULT_CALL_TEMPLATES).forEach(([k,v])=>{
     if(!state.library.callTemplates[k]) state.library.callTemplates[k]=structuredClone(v); });
   if(!state.library.abortWords) state.library.abortWords = structuredClone(DEFAULT_ABORT_WORDS);
+  // comms-model fix: a check-in addresses the FAC (the player), never the tasking agency.
+  // Rewrite the addressee token in any saved check-in template that predates this.
+  Object.values(state.library.callTemplates||{}).forEach(v=>{
+    if(v && typeof v.checkin==='string' && v.checkin.indexOf('{CONTROL}')>=0)
+      v.checkin = v.checkin.replace(/{CONTROL}/g,'{FAC}');
+  });
+  if(!state.library.facs || !state.library.facs.length) state.library.facs = structuredClone(DEFAULT_FACS);
+  if(!state.fac) state.fac = state.library.facs[0];
+  (state.flights||[]).forEach(f=>{ if(!f.fac) f.fac = state.fac; });   // pre-FAC flights
   if(!state.library.spokenWeapons) state.library.spokenWeapons = structuredClone(DEFAULT_WEAPON_SPOKEN);
   Object.entries(DEFAULT_WEAPON_SPOKEN).forEach(([k,v])=>{ if(!state.library.spokenWeapons[k]) state.library.spokenWeapons[k]=v; });
   if(!state.library.spokenAirframes) state.library.spokenAirframes = structuredClone(DEFAULT_AIRFRAME_SPOKEN);
@@ -688,7 +705,7 @@ function genFlight(opts={}){
     voice: assignVoice(operator, unit), abortCode: pick(libAbort()),
     // ingress heading with a roughly opposite egress; GM can change either
     runIn: CARDINALS[runHdg], runOut: CARDINALS[(runHdg+8)%CARDINALS.length],
-    numAircraft, operator, skill, control: state.control,
+    numAircraft, operator, skill, control: state.control, fac: state.fac,
     etaMin, etaSec: etaMin*60,
     stationMin, stationSec: stationMin*60, stationMax: stationMin*60,
     loadState, loadout, guns,
@@ -743,64 +760,64 @@ const DEFAULT_VOICES = {
   EVANGELICAL:{label:'Lt Col Studebaker-Mackenzie', side:'US', character:true}
 };
 
-// {CONTROL} {CS} {SHIPWORD} {TYPE} {ORD} {PLAY} {ABORT} {IN} {OUT} {AWAY}
+// {FAC} {CS} {SHIPWORD} {TYPE} {ORD} {PLAY} {ABORT} {IN} {OUT} {AWAY}
 const DEFAULT_CALL_TEMPLATES = {
   NEUTRAL:{
-    checkin:"{CONTROL}, {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}.",
+    checkin:"{FAC}, {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}.",
     talkon:"{CS}, ready for your talk-on.", run_in:"{CS}, in from the {IN}.",
     run_5:"Five seconds.", run_away:"{AWAY}.", run_off:"Off to the {OUT}.",
     bda:"{CS}, say BDA.", winchester:"{CS} is winchester.",
     bingo:"{CS} bingo fuel, returning to base.", aaa:"{CS} taking fire."},
   KANSAS:{
-    checkin:"{CONTROL}, {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}.",
+    checkin:"{FAC}, {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}.",
     talkon:"{CS}. Go ahead with your talk-on.", run_in:"{CS}, in from the {IN}.",
     run_5:"Five seconds.", run_away:"{AWAY}.", run_off:"Off to the {OUT}.",
     bda:"{CS}. How'd that look?", winchester:"{CS} winchester. Nothing left to give you.",
     bingo:"{CS} bingo fuel. We're headed home.", aaa:"{CS} taking fire from below."},
   ALABAMA:{
-    checkin:"{CONTROL}, this here's {CS}, {SHIPWORD} {TYPE}. We're carryin' {ORD}. 'Bout {PLAY} minutes of playtime. Abort word's {ABORT}.",
+    checkin:"{FAC}, this here's {CS}, {SHIPWORD} {TYPE}. We're carryin' {ORD}. 'Bout {PLAY} minutes of playtime. Abort word's {ABORT}.",
     talkon:"{CS}. Go on an' talk us onto it.", run_in:"{CS}, comin' in from the {IN}.",
     run_5:"Five seconds, hold what ya got.", run_away:"{AWAY}, y'all.", run_off:"Off to the {OUT}.",
     bda:"{CS}. Y'all see anything good down there?", winchester:"{CS} is winchester — plumb out.",
     bingo:"{CS} bingo fuel. Gotta head on back.", aaa:"{CS} — we're takin' fire down here!"},
   TEXAS:{
-    checkin:"{CONTROL}, {CS} checkin' in, {SHIPWORD} {TYPE}. We brought {ORD}. {PLAY} minutes on station. Abort's {ABORT}.",
+    checkin:"{FAC}, {CS} checkin' in, {SHIPWORD} {TYPE}. We brought {ORD}. {PLAY} minutes on station. Abort's {ABORT}.",
     talkon:"{CS}. Talk us on, we're lookin'.", run_in:"{CS}, in hot from the {IN}.",
     run_5:"Five seconds.", run_away:"{AWAY} — that's a big one!", run_off:"Off to the {OUT}.",
     bda:"{CS}. Tell me we got somethin'.", winchester:"{CS} winchester. Ain't got a thing left.",
     bingo:"{CS} bingo. Headin' for the barn.", aaa:"{CS} takin' fire, and I do not care for it!"},
   CALIFORNIA:{
-    checkin:"{CONTROL}, {CS} cruisin' in, {SHIPWORD} {TYPE}. We got {ORD}. {PLAY} minutes of playtime. Abort's {ABORT}.",
+    checkin:"{FAC}, {CS} cruisin' in, {SHIPWORD} {TYPE}. We got {ORD}. {PLAY} minutes of playtime. Abort's {ABORT}.",
     talkon:"{CS}. Yeah, go ahead an' talk us on.", run_in:"{CS}, rollin' in from the {IN}.",
     run_5:"Five seconds, man.", run_away:"{AWAY}.", run_off:"Off to the {OUT}, real smooth.",
     bda:"{CS}. So uh, how'd that work out?", winchester:"{CS} is winchester. All out, man.",
     bingo:"{CS} bingo fuel. We're gonna head back.", aaa:"{CS} — whoa, we're takin' fire!"},
   JERSEY:{
-    checkin:"{CONTROL}, {CS}, {SHIPWORD} {TYPE}. We got {ORD}. Playtime {PLAY}. Abort code {ABORT}, you got that?",
+    checkin:"{FAC}, {CS}, {SHIPWORD} {TYPE}. We got {ORD}. Playtime {PLAY}. Abort code {ABORT}, you got that?",
     talkon:"{CS}. Talk us on already.", run_in:"{CS}, in from the {IN}.",
     run_5:"Five seconds.", run_away:"{AWAY}!", run_off:"Off to the {OUT}.",
     bda:"{CS}. So? What're we lookin' at?", winchester:"{CS} winchester. That's it, we're done.",
     bingo:"{CS} bingo. We're outta here.", aaa:"{CS} takin' fire! Somebody down there don't like us!"},
   SOMERSET:{
-    checkin:"Mornin' {CONTROL}, this'm {CS}, {SHIPWORD} {TYPE}. Got {ORD} aboard. Playtime's {PLAY} minutes, moi lover. Abort word's {ABORT}.",
+    checkin:"Mornin' {FAC}, this'm {CS}, {SHIPWORD} {TYPE}. Got {ORD} aboard. Playtime's {PLAY} minutes, moi lover. Abort word's {ABORT}.",
     talkon:"{CS} 'ere. Talk us on then, if you'm ready.", run_in:"{CS}, comin' in from the {IN}.",
     run_5:"Five second, moi lover.", run_away:"{AWAY}!", run_off:"Off to the {OUT}, proper job.",
     bda:"{CS}. Did us do any good down there?", winchester:"{CS} be winchester. Empty as a dry cider barrel.",
     bingo:"{CS} bingo fuel. Off home for tea.", aaa:"{CS} — they'm shootin' at us!"},
   DEVON:{
-    checkin:"'Ello {CONTROL}, {CS} 'ere, {SHIPWORD} {TYPE}. We'm carryin' {ORD}. Playtime {PLAY} minutes. Abort word {ABORT}.",
+    checkin:"'Ello {FAC}, {CS} 'ere, {SHIPWORD} {TYPE}. We'm carryin' {ORD}. Playtime {PLAY} minutes. Abort word {ABORT}.",
     talkon:"{CS}. Go on then, tell us where 'tis.", run_in:"{CS}, in from the {IN}.",
     run_5:"Five second.", run_away:"{AWAY}, my 'andsome!", run_off:"Off to the {OUT}.",
     bda:"{CS}. Any good, that?", winchester:"{CS} be winchester, nothin' left at all.",
     bingo:"{CS} bingo. Headin' back to the farm.", aaa:"{CS} — takin' fire, they'm proper cross!"},
   BRISTOL:{
-    checkin:"Alright {CONTROL}, {CS} 'ere mind, {SHIPWORD} {TYPE}. Got {ORD}. Playtime {PLAY}. Abort word's {ABORT}, mind.",
+    checkin:"Alright {FAC}, {CS} 'ere mind, {SHIPWORD} {TYPE}. Got {ORD}. Playtime {PLAY}. Abort word's {ABORT}, mind.",
     talkon:"{CS}. Go on, talk us on.", run_in:"{CS}, in from the {IN}, mind.",
     run_5:"Five seconds.", run_away:"{AWAY}!", run_off:"Off to the {OUT}.",
     bda:"{CS}. That do anythin'?", winchester:"{CS} winchester, gert empty.",
     bingo:"{CS} bingo fuel, headin' back.", aaa:"{CS} takin' fire!"},
   BANDIT:{
-    checkin:"{CONTROL}! {CS} 'ere, {SHIPWORD} {TYPE}, an' us bain't afeared o' nothin'. Got {ORD}. Playtime {PLAY} minutes. Abort word's {ABORT} — but us won't be needin' it.",
+    checkin:"{FAC}! {CS} 'ere, {SHIPWORD} {TYPE}, an' us bain't afeared o' nothin'. Got {ORD}. Playtime {PLAY} minutes. Abort word's {ABORT} — but us won't be needin' it.",
     talkon:"{CS}. Talk us on, an' don't spare the detail — us'll go in close.",
     run_in:"{CS}, in from the {IN}, low an' proper!", run_5:"Five second — steady now!",
     run_away:"{AWAY}! 'Ave it!", run_off:"Off to the {OUT}. Us'll come round again, no bother.",
@@ -809,13 +826,13 @@ const DEFAULT_CALL_TEMPLATES = {
     bingo:"{CS} bingo fuel. Reluctant to leave 'ee, but us must.",
     aaa:"{CS} takin' fire — don't 'ee worry, us've had worse off the goats!"},
   SURLY:{
-    checkin:"{CONTROL}. {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}. Let's get on with it.",
+    checkin:"{FAC}. {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}. Let's get on with it.",
     talkon:"{CS}. Talk. On. Any time you like.", run_in:"{CS}, in from the {IN}.",
     run_5:"Five.", run_away:"{AWAY}.", run_off:"Off {OUT}.",
     bda:"{CS}. Well? Did that fix it or not?", winchester:"{CS} winchester. Told you that wouldn't last.",
     bingo:"{CS} bingo. Should've called us sooner.", aaa:"{CS} taking fire. Obviously."},
   EVANGELICAL:{
-    checkin:"{CONTROL}, this is Lieutenant Colonel Studebaker-Mackenzie, {CS}, {SHIPWORD} {TYPE}, bearing {ORD} for the smiting of the heathen. Playtime {PLAY} minutes, the Lord willing. Abort word is {ABORT}.",
+    checkin:"{FAC}, this is Lieutenant Colonel Studebaker-Mackenzie, {CS}, {SHIPWORD} {TYPE}, bearing {ORD} for the smiting of the heathen. Playtime {PLAY} minutes, the Lord willing. Abort word is {ABORT}.",
     talkon:"{CS}. Point me to the wicked, brother, and I shall visit judgement upon them.",
     run_in:"{CS}, in from the {IN}, and the Lord goes with us.",
     run_5:"Five seconds until the reckoning.", run_away:"{AWAY}! Let the heathen tremble!",
@@ -928,7 +945,9 @@ function callTemplate(voice, id){
 function renderCall(f, id){
   let s = callTemplate(f.voice, id);
   const mins = Math.max(0, Math.round(f.stationSec/60));
-  return tidySpoken(s.replace(/{CONTROL}/g, f.control||state.control)
+  // {FAC} is the player being addressed; {CONTROL} is the tasking agency, still available to templates
+  return tidySpoken(s.replace(/{FAC}/g, f.fac||state.fac||'')
+          .replace(/{CONTROL}/g, f.control||state.control)
           .replace(/{CS}/g, (f.callsign+' '+f.flightNo).trim())
           .replace(/{SHIPWORD}/g, shipWord(f))
           .replace(/{TYPE}/g, afSpoken(f, f.numAircraft>1))
@@ -948,7 +967,8 @@ function optionsScript(){
     `${ord[i]||'Next'}, ${(f.callsign+' '+f.flightNo).trim()}, ${shipWord(f)} ${afSpoken(f,f.numAircraft>1)}`
     + (f.configName?`, ${f.configName.toLowerCase()} fit`:'')
     + `, overhead in ${spokenDigits(f.etaMin)} minutes, ${spokenDigits(f.stationMin)} minutes playtime.`);
-  return tidySpoken(`${state.control}. ${spokenCount(avail.length)} flight${avail.length>1?'s':''} for you. `
+  // control agency speaking TO the FAC (the player)
+  return tidySpoken(`${state.fac}, ${state.control}. ${spokenCount(avail.length)} flight${avail.length>1?'s':''} for you. `
        + items.join(' ') + ' Say preference.');
 }
 function pickQuip(f, cat){
@@ -1001,7 +1021,7 @@ function suggestOutcome(flight, wpn){
 //  RENDER
 //=================================================================
 function render(){
-  renderNav(); renderWx(); renderControl();
+  renderNav(); renderWx(); renderControl(); renderFac();
   const m = $('#main');
   if(ui.tab==='ops') m.innerHTML = viewOps();
   else if(ui.tab==='request') m.innerHTML = viewRequest();
@@ -1034,6 +1054,12 @@ function renderWx(){
   const p = $('#wxPill'); p.textContent = w.label; p.style.background=w.color; p.style.color=w.ink;
 }
 function renderControl(){ const s=$('#ctrlSel'); if(s) s.value = state.control; }
+function renderFac(){
+  const s=$('#facSel'); if(!s) return;
+  const list=(state.library.facs&&state.library.facs.length)?state.library.facs:DEFAULT_FACS;
+  s.innerHTML = list.map(n=>`<option${n===state.fac?' selected':''}>${esc(n)}</option>`).join('');
+  s.value = state.fac;
+}
 
 // ---- OPS BOARD ----
 function viewOps(){
@@ -1391,7 +1417,7 @@ function viewRadio(){
       <button class="small" onclick="app.addVoice()">+ Add voice</button>
       <button class="small danger" onclick="app.resetRadio()">Reset radio defaults</button></div>
     <div class="bd"><div class="hint">Every line the tool puts in your mouth is editable here. Tokens:
-      <b class="mono">{CONTROL} {CS} {SHIPWORD} {TYPE} {ORD} {PLAY} {ABORT} {IN} {OUT} {AWAY}</b>.
+      <b class="mono">{FAC} {CS} {SHIPWORD} {TYPE} {ORD} {PLAY} {ABORT} {IN} {OUT} {AWAY}</b>.
       A blank template falls back to the NEUTRAL voice.</div></div></div>`;
 
   h += '<div class="row"><div class="col" style="flex:.8">';
@@ -1468,6 +1494,13 @@ function viewRadio(){
       <button class="small primary" onclick="app.saveAbort()">Save</button></div><div class="bd">
       <textarea id="abortList" rows="3" style="width:100%">${esc(libAbort().join(', '))}</textarea>
       <div class="hint">Comma separated. One is drawn per flight and spoken in its check-in.</div>
+    </div></div>
+    <div class="card"><div class="hd"><h3>FAC callsigns (the player)</h3><span class="sp"></span>
+      <button class="small primary" onclick="app.saveFacs()">Save</button></div><div class="bd">
+      <textarea id="facList" rows="3" style="width:100%">${esc(((state.library.facs||DEFAULT_FACS)).join('\n'))}</textarea>
+      <div class="hint">One per line. Comms run <b>control agency → FAC</b> and <b>CAS flight → FAC</b>, so
+        every call is addressed to whichever of these is selected in the header. Use <b class="mono">{FAC}</b>
+        in templates for the player, and <b class="mono">{CONTROL}</b> for the tasking agency.</div>
     </div></div></div></div>`;
   return h;
 }
@@ -1785,6 +1818,7 @@ function openRadioPanel(fid, callId){
       ${f.rosterId?'<span class="tag known">★ KNOWN</span>':''}
       <span class="tag ${f.operator==='SCAF'?'scaf':'us'}">${f.operator}</span>
       <span class="tag voice">🗣 ${esc(v.label)}</span>
+      <span class="tag ctl">→ ${esc(f.fac||state.fac)}</span>
       <span class="muted" style="font-size:12px">${f.numAircraft}× ${esc(f.airframeName)}${f.configName?' • '+esc(f.configName):''}</span>
     </div>
     <div class="rtabs">${RADIO_CALLS.map(c=>
@@ -1909,6 +1943,7 @@ const app = {
   tab(t){ ui.tab=t; render(); },
   setWeather(v){ state.weather=v; logEvent('GM','Weather/visibility set to '+WEATHER[v].label); save(); renderWx(); },
   setControl(v){ state.control=v; logEvent('GM','Control agency set to '+v); save(); renderControl(); },
+  setFac(v){ state.fac=v; logEvent('GM','FAC callsign set to '+v); save(); renderFac(); },
   setTune(key,val,unit){
     val = Number(val);
     // keep min/max pairs from crossing — visually clamp the dragged slider to its partner
@@ -1957,7 +1992,7 @@ const app = {
       const u=(state.library.roster||[]).find(x=>x.id===f.rosterId);
       if(u) u.sorties=(u.sorties||0)+1;
     }
-    logEvent(f.callsign, `Assigned by FAC under ${f.control} — ${f.numAircraft}×${f.airframeName}, ${f.operator}, en route ETA ${Math.ceil(f.etaSec/60)}min, ${f.stationMin}min playtime`);
+    logEvent(f.callsign, `Assigned to ${f.fac||state.fac} via ${f.control} — ${f.numAircraft}×${f.airframeName}, ${f.operator}, en route ETA ${Math.ceil(f.etaSec/60)}min, ${f.stationMin}min playtime`);
     ui.tab='ops'; save(); render(); toast(f.callsign+' assigned — en route');
   },
   arriveNow(fid){
@@ -2138,6 +2173,12 @@ const app = {
     state.library.abortWords = raw.length?raw:structuredClone(DEFAULT_ABORT_WORDS);
     save(); render(); toast('Abort words saved');
   },
+  saveFacs(){
+    const raw=$('#facList').value.split('\n').map(s=>s.trim().toUpperCase()).filter(Boolean);
+    state.library.facs = raw.length?raw:structuredClone(DEFAULT_FACS);
+    if(!state.library.facs.includes(state.fac)) state.fac = state.library.facs[0];
+    save(); render(); toast('FAC callsigns saved');
+  },
   resetRadio(){
     if(!confirm('Reset all voices, templates, quips, spoken names and abort words to defaults?'))return;
     state.library.voices=structuredClone(DEFAULT_VOICES);
@@ -2256,7 +2297,8 @@ const app = {
   delWeapon(id){ if(!confirm('Delete weapon?'))return; delete state.library.weapons[id]; save(); render(); },
   resetLibrary(){ if(!confirm('Reset airframes, weapons AND the known-unit roster to defaults?\nThis discards custom units and their sortie counts. (Flights/log kept.)'))return;
     state.library={weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES),
-                   roster:structuredClone(DEFAULT_ROSTER), quips:structuredClone(DEFAULT_QUIPS)};
+                   roster:structuredClone(DEFAULT_ROSTER), quips:structuredClone(DEFAULT_QUIPS),
+                   facs:structuredClone(DEFAULT_FACS)};
     save(); render(); toast('Library reset'); },
 
   // session/data
@@ -2281,10 +2323,12 @@ const app = {
     logEvent('GM','New session started'); save(); ui.tab='ops'; render(); renderWx(); },
   wipeAll(){ if(!confirm('WIPE EVERYTHING including your custom library?'))return;
     localStorage.removeItem(LS_KEY);
-    state={weather:'good',control:'Monkey Mountain',flights:[],log:[],seq:1,tuning:structuredClone(DEFAULT_TUNING),
+    state={weather:'good',control:'Monkey Mountain',fac:DEFAULT_FACS[0],flights:[],log:[],seq:1,
+      tuning:structuredClone(DEFAULT_TUNING),
       library:{weapons:structuredClone(DEFAULT_WEAPONS),airframes:structuredClone(DEFAULT_AIRFRAMES),
-        roster:structuredClone(DEFAULT_ROSTER),quips:structuredClone(DEFAULT_QUIPS)}};
-    ui.tab='ops'; save(); render(); renderWx(); }
+        roster:structuredClone(DEFAULT_ROSTER),quips:structuredClone(DEFAULT_QUIPS),
+        facs:structuredClone(DEFAULT_FACS)}};
+    migrateState(); ui.tab='ops'; save(); render(); renderWx(); }
 };
 
 // helper accessors for strike modal
