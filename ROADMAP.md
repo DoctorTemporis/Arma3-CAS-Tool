@@ -14,7 +14,12 @@ feature below has enough detail to implement without the originating conversatio
   session for 10–20 players and voicing both the control agency and the pilots on the radio.
   **Cognitive load during play is the binding constraint** — features that reduce it beat
   features that add fidelity.
-- **Setting:** Vietnam, S.O.G. Prairie Fire + Unsung Redux airframes.
+- **Setting:** **"ChelteNam"** — the group (**Tactical Distractions**) runs a comedic West-Country
+  reskin of the Vietnam war to avoid real-world racial/historical baggage. Chelt Cong, Ho Cheese
+  Minh, Cambodia = Derbyshire, China = Dorset under Chairman Moo, tractor/dairy jokes, bad West
+  Country accents. **South Vietnamese Air Force (VNAF) is renamed SCAF** (South ChelteNam Air
+  Force) throughout — code identifiers included. Airframes are still the real Prairie Fire +
+  Unsung Redux set.
 - **Core fiction:** on-call *immediate* CAS — aircraft diverted from other tasking, so
   variable fuel/playtime and partial loads. Not pre-planned strikes.
 - **Workflow:** FAC requests → control agency offers options → FAC picks → `EN ROUTE` →
@@ -34,13 +39,14 @@ Commit **and push after every change** (user preference). `gh` is not on PATH; f
 Ordered for delivery (effort/risk aware), which differs from raw magnitude of improvement.
 Magnitude rank is noted per item.
 
-1. **Event alerts** — *magnitude #3, effort S* ← start here
-2. **Radio prompt cards** — *magnitude #1, effort M*
-3. **AAA battle damage** — *magnitude #2, effort M*
-4. **Target & BDA board** — *magnitude #4, effort M/L*
-5. **Squadron roster / campaign** — *magnitude #5, effort L* (deferred)
-
-Suggested: **1 + 2 = v3**, **3 = v4**, then reassess.
+1. ~~**Event alerts**~~ — **DONE** (also fixed wall-clock drift in backgrounded tabs)
+2. ~~**Squadron roster**~~ — **DONE** as *Known Units* (pulled forward from #5; the group already
+   has established recurring callsigns in play). Persistent roster with sortie counts, elite flag,
+   retire-on-loss. The deeper campaign layer — individually named *pilots* within a unit,
+   accuracy history per pilot — remains unbuilt if ever wanted.
+3. **Radio prompt cards** — *magnitude #1, effort M* ← next, **but confirm it's wanted first**
+4. **AAA battle damage** — *magnitude #2, effort M*
+5. **Target & BDA board** — *magnitude #4, effort M/L*
 
 ---
 

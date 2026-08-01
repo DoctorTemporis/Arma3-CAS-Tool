@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Arma 3 CAS / FAC Tracker</title>
+<title>ChelteNam CAS / FAC Tracker</title>
 <style>
   :root{
     --bg:#0f1410; --panel:#161d16; --panel2:#1e271d; --line:#2c3a2b;
@@ -55,10 +55,13 @@
   .tag.fw{color:#8fc0d8;border-color:#2c4b57}
   .tag.rw{color:#c8b070;border-color:#5a4c28}
   .tag.us{color:#7db0d0;border-color:#2c4b57}
-  .tag.vnaf{color:#e0b060;border-color:#5a4620}
+  .tag.scaf{color:#e0b060;border-color:#5a4620}
   .tag.aaa{color:#e8846f;border-color:#5a2a20;background:#2a1712}
   .tag.ctl{color:#7fd6c8;border-color:#2c5751}
   .tag.cfg{color:#c8b8e0;border-color:#4a3a5a;background:#1e1826}
+  .tag.known{color:#f0c874;border-color:#6a5320;background:#2e2510;font-weight:700}
+  .unitnote{margin:6px 0;padding:6px 9px;background:#2e2510;border-left:3px solid var(--amber);
+    border-radius:3px;font-size:12px;color:var(--amber2);font-style:italic}
   .status{font-weight:700;letter-spacing:.4px;font-size:12px;padding:2px 8px;border-radius:3px}
   .s-available{color:#b8b8b8;background:#242424}
   .s-inbound{color:#f0c874;background:#3a2f12}
@@ -134,7 +137,7 @@
 </head>
 <body>
 <header>
-  <h1>ARMA 3 — CAS / FAC TRACKER <small>on-call immediate air support</small></h1>
+  <h1>CHELTENAM — CAS / FAC TRACKER <small>Tactical Distractions • on-call immediate air support</small></h1>
   <div class="ctrl">
     <label style="margin:0">CONTROL AGENCY</label>
     <select id="ctrlSel" onchange="app.setControl(this.value)">
@@ -195,12 +198,13 @@ const DEFAULT_TUNING = {
   alertWinchester:true,            // all ordnance expended
   // composition
   fwBias:55,                       // % chance an "Any" option is fixed-wing (rest rotary)
-  vnafChance:35,                   // % chance a VNAF-capable flight is local
+  rosterChance:25,                 // % chance an option is a known recurring unit
+  scafChance:35,                   // % chance a SCAF-capable flight is local
   acMin:1, acMode:2, acMax:3,      // aircraft per flight (min / most-common / max)
   pctFull:45, pctPartial:35,       // % full / % partial load (remainder = 'other')
   // pilot skill (base hit-chance %, before weapon/weather)
   skRookie:38, skRegular:55, skVeteran:74, skAce:90,
-  vnafPenalty:12,                  // percentage points off skill for local pilots
+  scafPenalty:12,                  // percentage points off skill for local pilots
   // weather effect on hit chance (percentage points)
   wxGood:0, wxHazy:-8, wxPoor:-16, wxMarginal:-26,
   // engagement & reliability
@@ -225,67 +229,91 @@ const DEFAULT_WEAPONS = {
   gunpod:{name:'20mm Gun Pod (SUU)', cat:'gun', acc:0.70, pattern:'burst'},
   minigun:{name:'7.62 Minigun', cat:'gun', acc:0.70, pattern:'burst'},
   hrocket:{name:'2.75" Rocket Pods', cat:'rocket', acc:0.50, pattern:'salvo'},
-  gl40:{name:'40mm Grenade', cat:'gun', acc:0.58, pattern:'burst'}
+  gl40:{name:'40mm Grenade', cat:'gun', acc:0.58, pattern:'burst'},
+  minigun3:{name:'3× 7.62 Miniguns (side)', cat:'gun', acc:0.72, pattern:'burst'},
+  flare:{name:'Mk-24 Illumination Flare', cat:'flare', acc:0.85, area:true, pattern:'single'}
 };
 
 // airframes: role strike=goes in the on-call pool; fac=marker/recon.
-// vnaf:true => can appear as South Vietnamese AF (lower skill). weight = spawn commonness.
+// scaf:true => can appear as South Vietnamese AF (lower skill). weight = spawn commonness.
 // loadouts: named configs (weight = relative chance); load qty = full load per single aircraft.
 const DEFAULT_AIRFRAMES = [
-  {id:'a1', name:'A-1 Skyraider', type:'FW', role:'strike', vnaf:true, crew:1, weight:2, stn:[18,35], loadouts:[
+  {id:'a1', name:'A-1 Skyraider', type:'FW', role:'strike', scaf:true, crew:1, weight:2, stn:[18,35], loadouts:[
     {name:'Strike', weight:2, load:[{w:'mk82',max:6},{w:'m117',max:2},{w:'ffar',max:38},{w:'gun20',gun:true}]},
     {name:'Sandy (RESCAP)', weight:2, load:[{w:'mk82',max:4},{w:'cbu',max:4},{w:'napalm',max:2},{w:'ffar',max:19},{w:'gun20',gun:true}]},
     {name:'Nape & Rockets', weight:1, load:[{w:'napalm',max:4},{w:'ffar',max:38},{w:'gun20',gun:true}]} ]},
-  {id:'a4', name:'A-4 Skyhawk', type:'FW', role:'strike', vnaf:false, crew:1, weight:2, stn:[12,25], loadouts:[
+  {id:'a4', name:'A-4 Skyhawk', type:'FW', role:'strike', scaf:false, crew:1, weight:2, stn:[12,25], loadouts:[
     {name:'Snake & Nape', load:[{w:'snake',max:4},{w:'napalm',max:2},{w:'gun20',gun:true}]},
     {name:'Iron & Zuni', load:[{w:'mk82',max:6},{w:'zuni',max:8},{w:'gun20',gun:true}]},
     {name:'CBU', weight:1, load:[{w:'cbu',max:6},{w:'gun20',gun:true}]} ]},
-  {id:'a6', name:'A-6 Intruder', type:'FW', role:'strike', vnaf:false, crew:2, weight:1, stn:[15,30], loadouts:[
+  {id:'a6', name:'A-6 Intruder', type:'FW', role:'strike', scaf:false, crew:2, weight:1, stn:[15,30], loadouts:[
     {name:'Heavy Iron', load:[{w:'mk82',max:18}]},
     {name:'Snake', load:[{w:'snake',max:12},{w:'mk83',max:4}]} ]},
-  {id:'a7', name:'A-7 Corsair II', type:'FW', role:'strike', vnaf:false, crew:1, weight:1, stn:[15,28], loadouts:[
+  {id:'a7', name:'A-7 Corsair II', type:'FW', role:'strike', scaf:false, crew:1, weight:1, stn:[15,28], loadouts:[
     {name:'Iron', load:[{w:'mk82',max:8},{w:'gun20',gun:true}]},
     {name:'CBU', load:[{w:'cbu',max:8},{w:'gun20',gun:true}]} ]},
-  {id:'f100', name:'F-100 Super Sabre', type:'FW', role:'strike', vnaf:false, crew:1, weight:2, stn:[10,20], loadouts:[
+  {id:'f100', name:'F-100 Super Sabre', type:'FW', role:'strike', scaf:false, crew:1, weight:2, stn:[10,20], loadouts:[
     {name:'Snake & Nape', weight:2, load:[{w:'snake',max:2},{w:'napalm',max:2},{w:'gun20',gun:true}]},
     {name:'Iron', load:[{w:'mk82',max:4},{w:'gun20',gun:true}]},
     {name:'Rockets', weight:1, load:[{w:'ffar',max:19},{w:'napalm',max:2},{w:'gun20',gun:true}]} ]},
-  {id:'f105', name:'F-105 Thunderchief', type:'FW', role:'strike', vnaf:false, crew:1, weight:1, stn:[8,18], loadouts:[
+  {id:'f105', name:'F-105 Thunderchief', type:'FW', role:'strike', scaf:false, crew:1, weight:1, stn:[8,18], loadouts:[
     {name:'Heavy Iron', load:[{w:'m117',max:6},{w:'gun20',gun:true}]},
     {name:'Mk-82', load:[{w:'mk82',max:5},{w:'gun20',gun:true}]},
     {name:'CBU', weight:1, load:[{w:'cbu',max:6},{w:'gun20',gun:true}]} ]},
-  {id:'f4', name:'F-4 Phantom II', type:'FW', role:'strike', vnaf:false, crew:2, weight:2, stn:[10,20], loadouts:[
+  {id:'f4', name:'F-4 Phantom II', type:'FW', role:'strike', scaf:false, crew:2, weight:2, stn:[10,20], loadouts:[
     {name:'Iron', load:[{w:'mk82',max:8},{w:'gunpod',gun:true}]},
     {name:'CBU & Zuni', load:[{w:'cbu',max:6},{w:'zuni',max:8},{w:'gunpod',gun:true}]},
     {name:'Nape', weight:1, load:[{w:'napalm',max:4},{w:'mk82',max:4},{w:'gunpod',gun:true}]} ]},
-  {id:'a37', name:'A-37 Dragonfly', type:'FW', role:'strike', vnaf:true, crew:1, weight:1, stn:[12,24], loadouts:[
+  {id:'a37', name:'A-37 Dragonfly', type:'FW', role:'strike', scaf:true, crew:1, weight:1, stn:[12,24], loadouts:[
     {name:'Shake & Bake', weight:2, load:[{w:'mk82',max:2},{w:'napalm',max:2},{w:'minigun',gun:true}]},
     {name:'Rockets', load:[{w:'ffar',max:14},{w:'minigun',gun:true}]},
     {name:'CBU', weight:1, load:[{w:'cbu',max:4},{w:'minigun',gun:true}]} ]},
-  {id:'f5', name:'F-5 Freedom Fighter', type:'FW', role:'strike', vnaf:true, crew:1, weight:1, stn:[10,20], loadouts:[
+  {id:'f5', name:'F-5 Freedom Fighter', type:'FW', role:'strike', scaf:true, crew:1, weight:1, stn:[10,20], loadouts:[
     {name:'Iron', load:[{w:'mk82',max:4},{w:'gun20',gun:true}]},
     {name:'Snake & Nape', load:[{w:'snake',max:2},{w:'napalm',max:2},{w:'gun20',gun:true}]} ]},
-  {id:'ov10', name:'OV-10 Bronco', type:'FW', role:'strike', vnaf:false, crew:2, weight:1, stn:[20,45], fac:true, loadouts:[
+  {id:'ov10', name:'OV-10 Bronco', type:'FW', role:'strike', scaf:false, crew:2, weight:1, stn:[20,45], fac:true, loadouts:[
     {name:'FAC / Marker', weight:2, load:[{w:'ffar',max:14},{w:'minigun',gun:true}]},
     {name:'Light Strike', load:[{w:'ffar',max:28},{w:'minigun',gun:true}]} ]},
-  {id:'o2', name:'O-2 Skymaster (FAC)', type:'FW', role:'fac', vnaf:false, crew:1, weight:1, stn:[30,60], fac:true, loadouts:[
+  {id:'o2', name:'O-2 Skymaster (FAC)', type:'FW', role:'fac', scaf:false, crew:1, weight:1, stn:[30,60], fac:true, loadouts:[
     {name:'Marker', load:[{w:'ffar',max:14}]} ]},
-  {id:'uh1c', name:'UH-1C Gunship', type:'RW', role:'strike', vnaf:true, crew:4, weight:3, stn:[15,30], loadouts:[
+  {id:'uh1c', name:'UH-1C Gunship', type:'RW', role:'strike', scaf:true, crew:4, weight:3, stn:[15,30], loadouts:[
     {name:'M21 (Flex Guns)', weight:2, load:[{w:'hrocket',max:14},{w:'minigun',gun:true}]},
     {name:'Hog (XM3)', load:[{w:'hrocket',max:48},{w:'minigun',gun:true}]},
     {name:'Heavy Hog', load:[{w:'hrocket',max:38},{w:'gl40',gun:true},{w:'minigun',gun:true}]},
     {name:'Frog (40mm)', weight:1, load:[{w:'hrocket',max:7},{w:'gl40',gun:true},{w:'minigun',gun:true}]} ]},
-  {id:'uh1d', name:'UH-1D Bushranger', type:'RW', role:'strike', vnaf:true, crew:4, weight:2, stn:[15,30], loadouts:[
+  {id:'uh1d', name:'UH-1D Bushranger', type:'RW', role:'strike', scaf:true, crew:4, weight:2, stn:[15,30], loadouts:[
     {name:'Gunship', load:[{w:'hrocket',max:14},{w:'minigun',gun:true}]},
     {name:'Heavy', load:[{w:'hrocket',max:38},{w:'minigun',gun:true}]} ]},
-  {id:'ah1', name:'AH-1G Cobra', type:'RW', role:'strike', vnaf:false, crew:2, weight:3, stn:[15,28], loadouts:[
+  {id:'ah1', name:'AH-1G Cobra', type:'RW', role:'strike', scaf:false, crew:2, weight:3, stn:[15,28], loadouts:[
     {name:'Hog (Rockets)', weight:2, load:[{w:'hrocket',max:76},{w:'minigun',gun:true},{w:'gl40',gun:true}]},
     {name:'Guns', load:[{w:'hrocket',max:14},{w:'minigun',gun:true},{w:'gl40',gun:true}]},
     {name:'20mm (XM35)', load:[{w:'gun20',gun:true},{w:'hrocket',max:14},{w:'minigun',gun:true}]} ]},
-  {id:'ach47', name:'ACH-47 "Guns-A-Go-Go"', type:'RW', role:'strike', vnaf:false, crew:5, weight:1, stn:[12,24], loadouts:[
+  {id:'ach47', name:'ACH-47 "Guns-A-Go-Go"', type:'RW', role:'strike', scaf:false, crew:5, weight:1, stn:[12,24], loadouts:[
     {name:'Guns-A-Go-Go', load:[{w:'hrocket',max:38},{w:'gun20',gun:true},{w:'minigun',gun:true},{w:'gl40',gun:true}]} ]},
-  {id:'oh6', name:'OH-6A Loach (Scout)', type:'RW', role:'strike', vnaf:false, crew:2, weight:1, stn:[20,40], fac:true, loadouts:[
-    {name:'Scout', load:[{w:'minigun',gun:true},{w:'hrocket',max:7}]} ]}
+  {id:'oh6', name:'OH-6A Loach (Scout)', type:'RW', role:'strike', scaf:false, crew:2, weight:1, stn:[20,40], fac:true, loadouts:[
+    {name:'Scout', load:[{w:'minigun',gun:true},{w:'hrocket',max:7}]} ]},
+  {id:'ac47', name:'AC-47 Spooky', type:'FW', role:'strike', scaf:true, crew:7, weight:1, stn:[40,70], loadouts:[
+    {name:'Gunship', weight:2, load:[{w:'minigun3',gun:true},{w:'flare',max:45}]},
+    {name:'Night Illumination', load:[{w:'minigun3',gun:true},{w:'flare',max:90}]} ]},
+  {id:'b52', name:'B-52 Stratofortress (Arc Light)', type:'FW', role:'strike', scaf:false, crew:6, weight:0.15, stn:[4,8], loadouts:[
+    {name:'Arc Light', load:[{w:'mk82',max:84}]},
+    {name:'Heavy Arc Light', weight:1, load:[{w:'m117',max:60},{w:'mk83',max:12}]} ]}
+];
+
+// KNOWN UNITS — recurring callsigns the ground element has a relationship with.
+// A roster unit fixes callsign / airframe / operator / skill / section size; everything else
+// (loadout config, fuel state, ETA, expenditure) is still rolled fresh on each appearance.
+// `elite` exempts the unit from the SCAF accuracy penalty. Persisted with the library.
+const DEFAULT_ROSTER = [
+  {id:'bandit', callsign:'BANDIT', flightNo:'FLIGHT', airframeId:'a1', operator:'SCAF',
+   skill:'ace', elite:true, numAircraft:2, weight:3, active:true, sorties:0,
+   notes:'Elite SCAF Skyraider pair. Long relationship with the ground element — no SCAF penalty.'},
+  {id:'greasemonkey', callsign:'GREASEMONKEY', flightNo:'', airframeId:'ah1', operator:'US',
+   skill:'veteran', elite:false, numAircraft:2, weight:3, active:true, sorties:0,
+   notes:'Well-known Cobra gunship section.'},
+  {id:'thunderbolt', callsign:'THUNDERBOLT', flightNo:'', airframeId:'b52', operator:'US',
+   skill:'veteran', elite:false, numAircraft:1, weight:0.5, active:true, sorties:0,
+   notes:'Arc Light heavy. Rare, devastating, indiscriminate. Mind the danger-close margin.'}
 ];
 
 //=================================================================
@@ -299,7 +327,8 @@ let state = {
   log:[],
   seq:1,
   tuning:structuredClone(DEFAULT_TUNING),
-  library:{ weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES) }
+  library:{ weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES),
+            roster:structuredClone(DEFAULT_ROSTER) }
 };
 let ui = { tab:'ops' };
 
@@ -311,12 +340,37 @@ function load(){
   }catch(e){ console.warn('load failed', e); }
   if(!state.library.weapons) state.library.weapons = structuredClone(DEFAULT_WEAPONS);
   if(!state.library.airframes) state.library.airframes = structuredClone(DEFAULT_AIRFRAMES);
+  if(!state.library.roster) state.library.roster = structuredClone(DEFAULT_ROSTER);
   migrateState();
 }
 // migrate older saved/imported data forward (defaults + per-plane ordnance model)
 function migrateState(){
+  // ChelteNam theme: VNAF -> SCAF (South ChelteNam Air Force)
+  const oldT = state.tuning||{};
+  if(oldT.vnafChance!=null && oldT.scafChance==null) oldT.scafChance = oldT.vnafChance;
+  if(oldT.vnafPenalty!=null && oldT.scafPenalty==null) oldT.scafPenalty = oldT.vnafPenalty;
+  delete oldT.vnafChance; delete oldT.vnafPenalty;
+  (state.library.airframes||[]).forEach(a=>{
+    if(a.vnaf!==undefined){ if(a.scaf===undefined) a.scaf=a.vnaf; delete a.vnaf; }
+  });
+  (state.flights||[]).forEach(f=>{ if(f.operator==='VNAF') f.operator='SCAF'; });
+
   state.tuning = Object.assign(structuredClone(DEFAULT_TUNING), state.tuning||{});
   if(!state.control) state.control = 'Monkey Mountain';
+
+  // additive: give an existing saved library any newly-shipped defaults it lacks
+  // (never overwrite entries the GM may have customised)
+  Object.entries(DEFAULT_WEAPONS).forEach(([wid,w])=>{
+    if(!state.library.weapons[wid]) state.library.weapons[wid]=structuredClone(w);
+  });
+  DEFAULT_AIRFRAMES.forEach(def=>{
+    if(!state.library.airframes.some(a=>a.id===def.id)) state.library.airframes.push(structuredClone(def));
+  });
+  if(!state.library.roster) state.library.roster=[];
+  DEFAULT_ROSTER.forEach(def=>{
+    if(!state.library.roster.some(u=>u.id===def.id)) state.library.roster.push(structuredClone(def));
+  });
+  state.library.roster.forEach(u=>{ if(u.sorties==null) u.sorties=0; if(u.active==null) u.active=true; });
   // airframes: single `load` → named `loadouts`. Known default airframes are upgraded to the
   // new default configs; custom airframes keep their load as a single "Standard" config.
   const defById = Object.fromEntries(DEFAULT_AIRFRAMES.map(a=>[a.id,a]));
@@ -357,6 +411,25 @@ function pickLoadState(){ const t=T(); const r=Math.random()*100;
   return 'other'; }
 function airframeLoadouts(af){ return (af.loadouts && af.loadouts.length) ? af.loadouts : [{name:'Standard', load:af.load||[]}]; }
 function pickLoadout(af){ return weightedPick(airframeLoadouts(af)); }
+// may a known recurring unit turn up? Never duplicates one already in play.
+function pickRosterUnit(opts){
+  const t=T();
+  if(opts.airframeId) return null;                              // explicit airframe request bypasses the roster
+  if(!(Math.random()*100 < (t.rosterChance||0))) return null;
+  const busy = new Set(state.flights
+    .filter(f=>['available','inbound','checkin','onstation'].includes(f.status))
+    .map(f=>f.rosterId).filter(Boolean));
+  const lib = state.library.airframes;
+  const pool = (state.library.roster||[]).filter(u=>{
+    if(u.active===false || busy.has(u.id)) return false;
+    if(opts.allowScaf===false && u.operator==='SCAF') return false;
+    const af = lib.find(a=>a.id===u.airframeId);
+    if(!af) return false;
+    if(opts.type && af.type!==opts.type) return false;
+    return true;
+  });
+  return pool.length ? weightedPick(pool) : null;
+}
 
 //=================================================================
 //  HELPERS
@@ -426,7 +499,7 @@ function playAlertSound(kind){
   (ALERT_SOUNDS[kind]||ALERT_SOUNDS.test).forEach(([f,d,delay])=>beep(f,d,delay,vol));
 }
 // title flashing so it's visible in the taskbar when the browser is behind the game
-const BASE_TITLE='Arma 3 CAS / FAC Tracker';
+const BASE_TITLE='ChelteNam CAS / FAC Tracker';
 let _titleT=null;
 function flashTitle(msg){
   clearTimeout(_titleT);
@@ -495,29 +568,37 @@ function genFlight(opts={}){
   const t = T();
   const lib = state.library.airframes;
   const strike = lib.filter(a=>a.role==='strike');
-  let pool;
-  if(opts.airframeId) pool = lib.filter(a=>a.id===opts.airframeId);
-  else if(opts.type==='FW') pool = strike.filter(a=>a.type==='FW');
-  else if(opts.type==='RW') pool = strike.filter(a=>a.type==='RW');
-  else {
-    // "Any": choose FW vs RW by the fixed-wing bias, then weight within that type
-    const fw = strike.filter(a=>a.type==='FW'), rw = strike.filter(a=>a.type==='RW');
-    if(fw.length && rw.length) pool = (Math.random()*100 < t.fwBias) ? fw : rw;
-    else pool = strike;
-  }
-  if(!pool || !pool.length) pool = strike.length ? strike : lib;
-  const af = weightedPick(pool);
 
-  const canVnaf = af.vnaf && opts.allowVnaf!==false;
-  const operator = (canVnaf && Math.random()*100 < t.vnafChance) ? 'VNAF' : 'US';
-  const skillPool = operator==='VNAF'
+  // a known recurring unit may turn up instead of an anonymous on-call flight
+  const unit = pickRosterUnit(opts);
+  let af = unit ? lib.find(a=>a.id===unit.airframeId) : null;
+  if(!af){
+    let pool;
+    if(opts.airframeId) pool = lib.filter(a=>a.id===opts.airframeId);
+    else if(opts.type==='FW') pool = strike.filter(a=>a.type==='FW');
+    else if(opts.type==='RW') pool = strike.filter(a=>a.type==='RW');
+    else {
+      // "Any": choose FW vs RW by the fixed-wing bias, then weight within that type
+      const fw = strike.filter(a=>a.type==='FW'), rw = strike.filter(a=>a.type==='RW');
+      if(fw.length && rw.length) pool = (Math.random()*100 < t.fwBias) ? fw : rw;
+      else pool = strike;
+    }
+    if(!pool || !pool.length) pool = strike.length ? strike : lib;
+    af = weightedPick(pool);
+  }
+
+  const canScaf = af.scaf && opts.allowScaf!==false;
+  const operator = unit ? (unit.operator||'US')
+                        : ((canScaf && Math.random()*100 < t.scafChance) ? 'SCAF' : 'US');
+  const skillPool = operator==='SCAF'
     ? ['rookie','rookie','regular','regular','veteran']
     : ['rookie','regular','regular','veteran','veteran','ace'];
-  const skill = pick(skillPool);
+  const skill = unit ? (unit.skill||'regular') : pick(skillPool);
 
   const acLo=Math.min(t.acMin,t.acMax), acHi=Math.max(t.acMin,t.acMax);
   const acMode=clamp(t.acMode==null?Math.round((acLo+acHi)/2):t.acMode, acLo, acHi);
-  const numAircraft = clamp(Math.round(triangular(acLo, acMode, acHi)), acLo, acHi);
+  const numAircraft = (unit && unit.numAircraft) ? unit.numAircraft
+                    : clamp(Math.round(triangular(acLo, acMode, acHi)), acLo, acHi);
 
   // fuel / playtime — diverted craft vary widely; sometimes low state
   const [smin,smax] = af.stn || [12,25];
@@ -551,13 +632,14 @@ function genFlight(opts={}){
     loadout.push({ w:item.w, name:wd.name, cat:wd.cat, pattern:wd.pattern, acc:wd.acc, area:!!wd.area, planeMax, perPlane });
   });
 
-  const cs = makeCallsign();
+  const cs = unit ? {words:unit.callsign, number:(unit.flightNo||spokenTwoDigit())} : makeCallsign();
   return {
     id: state.seq++,
     callsign: cs.words,
     flightNo: cs.number,
     airframeId: af.id, airframeName: af.name, type: af.type, fac:!!af.fac,
     configName: cfg.name,
+    rosterId: unit?unit.id:null, elite: unit?!!unit.elite:false, unitNotes: unit?(unit.notes||''):'',
     numAircraft, operator, skill, control: state.control,
     etaMin, etaSec: etaMin*60,
     stationMin, stationSec: stationMin*60, stationMax: stationMin*60,
@@ -579,7 +661,8 @@ function generateOptions(n, opts){
 //=================================================================
 function suggestOutcome(flight, wpn){
   const t = T();
-  const skillV = skillVal(flight.skill) - (flight.operator==='VNAF' ? t.vnafPenalty/100 : 0);
+  // elite units (e.g. BANDIT) fly to US standard and are exempt from the SCAF penalty
+  const skillV = skillVal(flight.skill) - ((flight.operator==='SCAF' && !flight.elite) ? t.scafPenalty/100 : 0);
   const wmod = wxMod(state.weather);
   const aaaMod = flight.aaa ? -(t.aaaPenalty/100) : 0;
   const base = wpn.acc!=null ? wpn.acc : 0.5;
@@ -669,7 +752,8 @@ function flightCard(f){
     <span class="status s-${f.status}">${statusLabel(f.status)}</span>
     <b class="mono" style="font-size:16px">${esc(f.callsign)} ${esc(f.flightNo)}</b>
     <span class="tag ${f.type==='FW'?'fw':'rw'}">${f.type}</span>
-    <span class="tag ${f.operator==='VNAF'?'vnaf':'us'}">${f.operator}</span>
+    <span class="tag ${f.operator==='SCAF'?'scaf':'us'}">${f.operator}</span>
+    ${f.rosterId?`<span class="tag known" title="${esc(f.unitNotes||'')}">★ KNOWN${f.elite?' • ELITE':''}</span>`:''}
     ${f.control?`<span class="tag ctl">📻 ${esc(f.control)}</span>`:''}
     ${f.aaa?'<span class="tag aaa">⚠ UNDER AAA</span>':''}
     <span class="sp"></span>
@@ -683,8 +767,8 @@ function flightCard(f){
     <button class="small" onclick="app.ackAlert(${f.id})">Acknowledge</button></div>`;
 
   h += `<div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}${f.configName?` <span class="tag cfg">${esc(f.configName)}</span>`:''}</div>`;
-  h += `<div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='VNAF'?' <span class="muted">(local)</span>':''} &nbsp;•&nbsp; declared load: <b>${f.loadState.toUpperCase()}</b></div>`;
-  if(onstn) h += `<div class="kv"><b>Station</b> <span id="sta-${f.id}">${fmtClock(f.stationSec)}</span> of ${fmtClock(f.stationMax)} remaining${f.paused?' <span class="tag vnaf">PAUSED</span>':''}</div>`;
+  h += `<div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='SCAF'?' <span class="muted">(local)</span>':''} &nbsp;•&nbsp; declared load: <b>${f.loadState.toUpperCase()}</b></div>`;
+  if(onstn) h += `<div class="kv"><b>Station</b> <span id="sta-${f.id}">${fmtClock(f.stationSec)}</span> of ${fmtClock(f.stationMax)} remaining${f.paused?' <span class="tag scaf">PAUSED</span>':''}</div>`;
   else if(isCheckin) h += `<div class="kv"><b>Overhead</b> holding — awaiting FAC check-in. Playtime <b id="sta-${f.id}">${fmtClock(f.stationSec)}</b> <span class="muted">(burning; not yet cleared hot)</span></div>`;
   else h += `<div class="kv"><b>En route</b> arriving in ~${Math.ceil(f.etaSec/60)} min • ${f.stationMin} min playtime on arrival</div>`;
 
@@ -757,8 +841,8 @@ function viewRequest(){
         <select id="genN"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
       <div><label>Type</label>
         <select id="genType"><option value="any">Any</option><option value="FW">Fixed-wing only</option><option value="RW">Rotary only</option></select></div>
-      <div><label>Allow VNAF (local)</label>
-        <select id="genVnaf"><option value="yes">Yes</option><option value="no">US only</option></select></div>
+      <div><label>Allow SCAF (local)</label>
+        <select id="genScaf"><option value="yes">Yes</option><option value="no">US only</option></select></div>
       <div><button class="primary" onclick="app.doGenerate()">⟳ Generate Options</button></div>
     </div>
   </div></div>`;
@@ -772,12 +856,14 @@ function availCard(f){
   let h = `<div class="col card" style="flex:1;min-width:300px"><div class="hd">
     <b class="mono" style="font-size:15px">${esc(f.callsign)} ${esc(f.flightNo)}</b>
     <span class="tag ${f.type==='FW'?'fw':'rw'}">${f.type}</span>
-    <span class="tag ${f.operator==='VNAF'?'vnaf':'us'}">${f.operator}</span>
+    <span class="tag ${f.operator==='SCAF'?'scaf':'us'}">${f.operator}</span>
+    ${f.rosterId?`<span class="tag known" title="${esc(f.unitNotes||'')}">★ KNOWN${f.elite?' • ELITE':''}</span>`:''}
     ${f.control?`<span class="tag ctl">📻 ${esc(f.control)}</span>`:''}
   </div><div class="bd">
     <div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}</div>
     ${f.configName?`<div class="kv"><b>Config</b> <span class="tag cfg">${esc(f.configName)}</span></div>`:''}
-    <div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='VNAF'?' (local)':''}</div>
+    <div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='SCAF'?(f.elite?' (local, elite)':' (local)'):''}</div>
+    ${f.unitNotes?`<div class="unitnote">★ ${esc(f.unitNotes)}</div>`:''}
     <div class="etaBox"><span>ARRIVES IN <b>${f.etaMin} MIN</b></span><span>PLAYTIME <b>${f.stationMin} MIN</b></span></div>
     <div class="kv"><b>Load state</b> ${f.loadState.toUpperCase()}</div>
     <hr><b class="muted" style="font-size:12px">LOADOUT</b>`;
@@ -797,7 +883,7 @@ function availCard(f){
 function tuneReadout(){ const t=T();
   return `Current bounds — ETA ${Math.min(t.etaMin,t.etaMax)}–${Math.max(t.etaMin,t.etaMax)} min • `
     +`On-station ${Math.min(t.stnMin,t.stnMax)}–${Math.max(t.stnMin,t.stnMax)} min • `
-    +`VNAF ${t.vnafChance}% • Low-fuel ${t.lowFuelChance}% • `
+    +`SCAF ${t.scafChance}% • Low-fuel ${t.lowFuelChance}% • `
     +`Load full/partial/other ${t.pctFull}/${t.pctPartial}/${Math.max(0,100-t.pctFull-t.pctPartial)}% • `
     +`Ordnance ${t.perPlane!==false?'per-aircraft':'per-flight'}. Change below.`; }
 
@@ -858,7 +944,8 @@ function viewTuning(){
     + sliderRow('lowFuelMax','Low-fuel factor (max)',0.2,1,0.05,''));
   h += tuneGroup('Flight Composition',
     sliderRow('fwBias','Fixed-wing bias for "Any" (rest rotary)',0,100,1,'% FW')
-    + sliderRow('vnafChance','VNAF (local) appearance chance',0,100,1,'%')
+    + sliderRow('rosterChance','Chance option is a KNOWN unit',0,100,1,'%')
+    + sliderRow('scafChance','SCAF (local) appearance chance',0,100,1,'%')
     + sliderRow('acMin','Min aircraft per flight',1,6,1,'')
     + sliderRow('acMode','Median aircraft (most common)',1,6,1,'')
     + sliderRow('acMax','Max aircraft per flight',1,6,1,'')
@@ -868,7 +955,7 @@ function viewTuning(){
   h += tuneGroup('Pilot Skill — base hit chance',
     sliderRow('skRookie','Rookie',10,95,1,'%') + sliderRow('skRegular','Regular',10,95,1,'%')
     + sliderRow('skVeteran','Veteran',10,95,1,'%') + sliderRow('skAce','Ace',10,99,1,'%')
-    + sliderRow('vnafPenalty','VNAF pilot penalty',0,40,1,' pp'));
+    + sliderRow('scafPenalty','SCAF pilot penalty',0,40,1,' pp'));
   h += tuneGroup('Weather / Visibility effect (pp)',
     sliderRow('wxHazy','Moderate / hazy',-40,10,1,' pp') + sliderRow('wxPoor','Poor / overcast',-40,10,1,' pp')
     + sliderRow('wxMarginal','Marginal / low ceiling',-50,10,1,' pp'));
@@ -897,7 +984,33 @@ function viewLog(){
 
 // ---- LIBRARY ----
 function viewLibrary(){
-  let h = `<div class="row"><div class="col" style="flex:1.3">
+  // ---- known units (persistent roster) ----
+  let h = `<div class="card"><div class="hd"><h2>Known Units — Roster</h2>
+      <span class="muted" style="font-size:12px">recurring callsigns; persist across sessions</span>
+      <span class="sp"></span>
+      <button class="small primary" onclick="app.editUnit(null)">+ Add unit</button></div>
+    <div class="bd">`;
+  const roster = state.library.roster||[];
+  if(!roster.length) h += '<div class="empty">No known units.</div>';
+  roster.forEach(u=>{
+    const af = state.library.airframes.find(a=>a.id===u.airframeId);
+    h += `<div class="libitem"${u.active===false?' style="opacity:.5"':''}>
+      <b class="mono">${esc(u.callsign)}${u.flightNo?' '+esc(u.flightNo):''}</b>
+      <span class="tag ${u.operator==='SCAF'?'scaf':'us'}">${esc(u.operator||'US')}</span>
+      ${u.elite?'<span class="tag known">★ ELITE</span>':''}
+      ${u.active===false?'<span class="tag" style="color:#e8846f;border-color:#5a2a20">RETIRED</span>':''}
+      <span class="tag" title="roster weight">×${u.weight==null?1:u.weight}</span>
+      <span class="muted" style="flex:1;font-size:12px">${esc(af?af.name:'(missing airframe)')}
+        • ${u.numAircraft||1} ship • ${SKILLS[u.skill]?SKILLS[u.skill].label:u.skill}
+        • ${u.sorties||0} sortie${(u.sorties||0)===1?'':'s'}</span>
+      <button class="small" onclick="app.editUnit('${u.id}')">Edit</button>
+      <button class="small danger" onclick="app.delUnit('${u.id}')">✕</button>
+    </div>`;
+  });
+  h += `<div class="hint">A known unit keeps its callsign, airframe, operator, skill and section size on every appearance; fuel, loadout config and expenditure are still rolled fresh. Chance of appearing is set by <b>Roster chance</b> in TUNING.</div>
+    </div></div>`;
+
+  h += `<div class="row"><div class="col" style="flex:1.3">
     <div class="card"><div class="hd"><h2>Airframes</h2><span class="sp"></span>
       <button class="small primary" onclick="app.editAirframe(null)">+ Add airframe</button></div>
       <div class="bd">`;
@@ -907,7 +1020,7 @@ function viewLibrary(){
     h += `<div class="libitem">
       <b>${esc(a.name)}</b>
       <span class="tag ${a.type==='FW'?'fw':'rw'}">${a.type}</span>
-      ${a.vnaf?'<span class="tag vnaf">VNAF</span>':''}
+      ${a.scaf?'<span class="tag scaf">SCAF</span>':''}
       ${a.fac?'<span class="tag">FAC</span>':''}
       <span class="tag" title="spawn weight">×${a.weight==null?1:a.weight}</span>
       <span class="muted" style="flex:1;font-size:12px">${esc(loads)}</span>
@@ -952,6 +1065,7 @@ function viewSession(){
     <div class="kv"><b>Flights</b> ${state.flights.length} tracked</div>
     <div class="kv"><b>Log</b> ${state.log.length} events</div>
     <div class="kv"><b>Library</b> ${state.library.airframes.length} airframes, ${Object.keys(state.library.weapons).length} weapons</div>
+    <div class="kv"><b>Roster</b> ${(state.library.roster||[]).filter(u=>u.active!==false).length} active known unit(s), ${(state.library.roster||[]).reduce((s,u)=>s+(u.sorties||0),0)} total sorties flown</div>
   </div></div>`;
 }
 
@@ -1126,7 +1240,7 @@ function openEdit(fid){
       <div class="field"><label>Status</label><select id="edSt">
         ${['available','inbound','checkin','onstation','departed','rtb','shotdown','kia','aborted','diverted'].map(s=>opt(s,f.status,statusLabel(s))).join('')}</select></div>
       <div class="field"><label># Aircraft</label><input type="number" min="1" id="edNa" value="${f.numAircraft}"></div>
-      <div class="field"><label>Operator</label><select id="edOp">${opt('US',f.operator,'US')}${opt('VNAF',f.operator,'VNAF (local)')}</select></div>
+      <div class="field"><label>Operator</label><select id="edOp">${opt('US',f.operator,'US')}${opt('SCAF',f.operator,'SCAF (local)')}</select></div>
       <div class="field"><label>Control agency</label><select id="edCtrl">${CONTROLS.map(c=>opt(c,f.control,c)).join('')}</select></div>
       <div class="field"><label>Pilot skill</label><select id="edSk">${Object.entries(SKILLS).map(([k,v])=>opt(k,f.skill,v.label)).join('')}</select></div>
       <div class="field"><label>ETA (min)</label><input type="number" min="0" id="edEta" value="${Math.ceil(f.etaSec/60)}"></div>
@@ -1146,7 +1260,7 @@ function openEdit(fid){
 function openAirframeEditor(id, useExisting){
   const isNew = !id;
   const a = (useExisting && ui._afEdit) ? ui._afEdit
-          : (isNew ? {id:'af'+Date.now(), name:'', type:'FW', role:'strike', vnaf:false, fac:false, crew:1, weight:1,
+          : (isNew ? {id:'af'+Date.now(), name:'', type:'FW', role:'strike', scaf:false, fac:false, crew:1, weight:1,
                      loadouts:[{name:'Standard', weight:1, load:[]}], stn:[12,25]}
                   : structuredClone(state.library.airframes.find(x=>x.id===id)));
   if(!a.loadouts || !a.loadouts.length) a.loadouts=[{name:'Standard', weight:1, load:a.load||[]}];
@@ -1176,12 +1290,12 @@ function openAirframeEditor(id, useExisting){
       <div class="field"><label>Type</label><select id="afType">${opt('FW',a.type,'Fixed-wing')}${opt('RW',a.type,'Rotary')}</select></div>
       <div class="field"><label>Role</label><select id="afRole">${opt('strike',a.role,'Strike (in CAS pool)')}${opt('fac',a.role,'FAC / scout')}</select></div>
       <div class="field"><label>Crew</label><input type="number" id="afCrew" value="${a.crew||1}"></div>
-      <div class="field"><label>Spawn weight (0 = never)</label><input type="number" min="0" id="afWeight" value="${a.weight==null?1:a.weight}"></div>
+      <div class="field"><label>Spawn weight (0 = never, decimals ok)</label><input type="number" min="0" step="0.05" id="afWeight" value="${a.weight==null?1:a.weight}"></div>
       <div class="field"><label>Station time min (min)</label><input type="number" id="afStnA" value="${a.stn?a.stn[0]:12}"></div>
       <div class="field"><label>Station time max (min)</label><input type="number" id="afStnB" value="${a.stn?a.stn[1]:25}"></div>
     </div>
     <div class="flex" style="gap:16px">
-      <label style="margin:0"><input type="checkbox" id="afVnaf" ${a.vnaf?'checked':''}> VNAF-capable (local)</label>
+      <label style="margin:0"><input type="checkbox" id="afScaf" ${a.scaf?'checked':''}> SCAF-capable (local)</label>
       <label style="margin:0"><input type="checkbox" id="afFac" ${a.fac?'checked':''}> Can mark / FAC</label>
     </div>
     <hr><div class="flex"><b class="muted" style="font-size:12px">LOADOUT CONFIGURATIONS (per single aircraft)</b><span class="sp"></span>
@@ -1191,6 +1305,38 @@ function openAirframeEditor(id, useExisting){
    </div>
    <div class="ft"><button onclick="app.closeModal()">Cancel</button>
      <button class="primary" onclick="app.saveAirframe('${a.id}',${isNew})">Save airframe</button></div>`);
+}
+
+// known-unit (roster) editor
+function openUnitEditor(id){
+  const isNew=!id;
+  const u = isNew ? {id:'u'+Date.now(), callsign:'', flightNo:'', airframeId:(state.library.airframes[0]||{}).id,
+                     operator:'US', skill:'veteran', elite:false, numAircraft:2, weight:2, active:true, sorties:0, notes:''}
+                  : structuredClone((state.library.roster||[]).find(x=>x.id===id));
+  const opt=(v,cur,lbl)=>`<option value="${v}" ${v===cur?'selected':''}>${lbl}</option>`;
+  showModal(`<div class="hd"><h3>${isNew?'Add':'Edit'} Known Unit</h3><button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="grid2">
+      <div class="field"><label>Callsign</label><input id="uCs" value="${esc(u.callsign)}" placeholder="BANDIT"></div>
+      <div class="field"><label>Fixed flight no. (blank = random digits)</label><input id="uFn" value="${esc(u.flightNo||'')}" placeholder="FLIGHT"></div>
+      <div class="field"><label>Airframe</label><select id="uAf">
+        ${state.library.airframes.map(a=>opt(a.id,u.airframeId,a.name)).join('')}</select></div>
+      <div class="field"><label>Operator</label><select id="uOp">${opt('US',u.operator,'US')}${opt('SCAF',u.operator,'SCAF (local)')}</select></div>
+      <div class="field"><label>Pilot skill</label><select id="uSk">
+        ${Object.entries(SKILLS).map(([k,v])=>opt(k,u.skill,v.label)).join('')}</select></div>
+      <div class="field"><label>Aircraft in flight</label><input type="number" min="1" id="uNa" value="${u.numAircraft||1}"></div>
+      <div class="field"><label>Roster weight (0 = never)</label><input type="number" min="0" step="0.05" id="uWt" value="${u.weight==null?1:u.weight}"></div>
+      <div class="field"><label>Sorties flown</label><input type="number" min="0" id="uSo" value="${u.sorties||0}"></div>
+    </div>
+    <div class="flex" style="gap:16px">
+      <label style="margin:0"><input type="checkbox" id="uElite" ${u.elite?'checked':''}> Elite (exempt from SCAF accuracy penalty)</label>
+      <label style="margin:0"><input type="checkbox" id="uActive" ${u.active!==false?'checked':''}> Active (uncheck to retire)</label>
+    </div>
+    <div class="field" style="margin-top:10px"><label>Reputation / notes (shown to you when they turn up)</label>
+      <textarea id="uNotes" rows="2">${esc(u.notes||'')}</textarea></div>
+   </div>
+   <div class="ft"><button onclick="app.closeModal()">Cancel</button>
+     <button class="primary" onclick="app.saveUnit('${u.id}',${isNew})">Save unit</button></div>`);
 }
 
 // weapon editor
@@ -1204,7 +1350,7 @@ function openWeaponEditor(id){
     <div class="field"><label>Name</label><input id="wName" value="${esc(w.name)}"></div>
     <div class="grid2">
       <div class="field"><label>Category</label><select id="wCat">
-        ${['bomb','napalm','cbu','rocket','gun'].map(c=>opt(c,w.cat,c)).join('')}</select></div>
+        ${['bomb','napalm','cbu','rocket','gun','flare'].map(c=>opt(c,w.cat,c)).join('')}</select></div>
       <div class="field"><label>Delivery pattern</label><select id="wPat">
         ${['single','pair','salvo','burst'].map(p=>opt(p,w.pattern,p)).join('')}</select></div>
     </div>
@@ -1255,8 +1401,8 @@ const app = {
   doGenerate(){
     const n = parseInt($('#genN').value,10)||2;
     const type = $('#genType').value;
-    const allowVnaf = $('#genVnaf').value==='yes';
-    generateOptions(n, {type: type==='any'?null:type, allowVnaf});
+    const allowScaf = $('#genScaf').value==='yes';
+    generateOptions(n, {type: type==='any'?null:type, allowScaf});
   },
   reroll(fid){
     const i = state.flights.findIndex(f=>f.id===fid); if(i<0) return;
@@ -1268,6 +1414,10 @@ const app = {
   assign(fid){
     const f = state.flights.find(x=>x.id===fid); if(!f) return;
     f.status='inbound';
+    if(f.rosterId){                       // campaign continuity: count the sortie
+      const u=(state.library.roster||[]).find(x=>x.id===f.rosterId);
+      if(u) u.sorties=(u.sorties||0)+1;
+    }
     logEvent(f.callsign, `Assigned by FAC under ${f.control} — ${f.numAircraft}×${f.airframeName}, ${f.operator}, en route ETA ${Math.ceil(f.etaSec/60)}min, ${f.stationMin}min playtime`);
     ui.tab='ops'; save(); render(); toast(f.callsign+' assigned — en route');
   },
@@ -1289,7 +1439,15 @@ const app = {
   setStatus(fid, s){
     const f=state.flights.find(x=>x.id===fid); if(!f)return;
     if(s==='shotdown' && !confirm(f.callsign+' — mark as SHOT DOWN?')) return;
-    f.status=s; f.alertMsg=null; logEvent(f.callsign, 'Status → '+statusLabel(s)); save(); render();
+    f.status=s; f.alertMsg=null; logEvent(f.callsign, 'Status → '+statusLabel(s));
+    // losing a known unit is a campaign event — offer to retire them from the roster
+    if((s==='shotdown'||s==='kia') && f.rosterId){
+      const u=(state.library.roster||[]).find(x=>x.id===f.rosterId);
+      if(u && u.active!==false && confirm('Retire '+u.callsign+' from the roster?\nThey will stop appearing in future sessions. (You can reactivate them in the Library.)')){
+        u.active=false; logEvent(u.callsign, 'RETIRED from roster after '+(u.sorties||0)+' sortie(s)');
+      }
+    }
+    save(); render();
     toast(f.callsign+' '+statusLabel(s));
   },
   reactivate(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return;
@@ -1396,6 +1554,22 @@ const app = {
   // library
   editAirframe(id){ openAirframeEditor(id); },
   editWeapon(id){ openWeaponEditor(id); },
+  editUnit(id){ openUnitEditor(id); },
+  saveUnit(id, isNew){
+    const u={ id, callsign:($('#uCs').value.trim().toUpperCase()||'UNNAMED'), flightNo:$('#uFn').value.trim().toUpperCase(),
+      airframeId:$('#uAf').value, operator:$('#uOp').value, skill:$('#uSk').value,
+      numAircraft:Math.max(1,parseInt($('#uNa').value,10)||1),
+      weight:(()=>{const v=parseFloat($('#uWt').value); return isNaN(v)?1:Math.max(0,v);})(),
+      sorties:Math.max(0,parseInt($('#uSo').value,10)||0),
+      elite:$('#uElite').checked, active:$('#uActive').checked, notes:$('#uNotes').value.trim() };
+    if(!state.library.roster) state.library.roster=[];
+    if(isNew) state.library.roster.push(u);
+    else { const i=state.library.roster.findIndex(x=>x.id===id); if(i>=0) state.library.roster[i]=u; }
+    save(); closeModal(); render(); toast('Unit saved');
+  },
+  delUnit(id){ const u=(state.library.roster||[]).find(x=>x.id===id);
+    if(!confirm('Delete '+(u?u.callsign:'unit')+' from the roster permanently?\n(To keep the record but stop them appearing, edit and untick Active instead.)'))return;
+    state.library.roster=state.library.roster.filter(x=>x.id!==id); save(); render(); },
   _afAddConfig(){ ui._afEdit.loadouts = collectAfLoadouts(); ui._afEdit.loadouts.push({name:'New config', weight:1, load:[]}); reopenAf(); },
   _afDelConfig(ci){ ui._afEdit.loadouts = collectAfLoadouts();
     ui._afEdit.loadouts.splice(ci,1);
@@ -1409,9 +1583,9 @@ const app = {
     a.name=$('#afName').value.trim()||'Unnamed';
     a.type=$('#afType').value; a.role=$('#afRole').value;
     a.crew=parseInt($('#afCrew').value,10)||1;
-    const wv=parseInt($('#afWeight').value,10); a.weight = isNaN(wv)?1:Math.max(0,wv);
+    const wv=parseFloat($('#afWeight').value); a.weight = isNaN(wv)?1:Math.max(0,wv);
     a.stn=[parseInt($('#afStnA').value,10)||10, parseInt($('#afStnB').value,10)||25];
-    a.vnaf=$('#afVnaf').checked; a.fac=$('#afFac').checked;
+    a.scaf=$('#afScaf').checked; a.fac=$('#afFac').checked;
     a.loadouts=collectAfLoadouts(); if(!a.loadouts.length) a.loadouts=[{name:'Standard', weight:1, load:[]}];
     delete a.load;
     if(isNew){ state.library.airframes.push(a); }
@@ -1427,8 +1601,9 @@ const app = {
     state.library.weapons[key]=nw; save(); closeModal(); render(); toast('Weapon saved');
   },
   delWeapon(id){ if(!confirm('Delete weapon?'))return; delete state.library.weapons[id]; save(); render(); },
-  resetLibrary(){ if(!confirm('Reset airframes + weapons to defaults? (flights/log kept)'))return;
-    state.library={weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES)};
+  resetLibrary(){ if(!confirm('Reset airframes, weapons AND the known-unit roster to defaults?\nThis discards custom units and their sortie counts. (Flights/log kept.)'))return;
+    state.library={weapons:structuredClone(DEFAULT_WEAPONS), airframes:structuredClone(DEFAULT_AIRFRAMES),
+                   roster:structuredClone(DEFAULT_ROSTER)};
     save(); render(); toast('Library reset'); },
 
   // session/data
@@ -1444,7 +1619,7 @@ const app = {
   },
   exportLogTxt(){
     const lines = state.log.slice().reverse().map(e=>`[${e.ts}] ${e.who}: ${e.msg}`);
-    const head = 'ARMA 3 CAS/FAC AFTER-ACTION LOG — '+new Date().toLocaleString()+'\n'+'Weather: '+WEATHER[state.weather].label+'\n'+'='.repeat(50)+'\n';
+    const head = 'CHELTENAM CAS/FAC AFTER-ACTION LOG — Tactical Distractions\n'+new Date().toLocaleString()+'\n'+'Weather: '+WEATHER[state.weather].label+'\n'+'='.repeat(50)+'\n';
     downloadFile('cas_aar_'+dstamp()+'.txt', head+lines.join('\n'), 'text/plain');
   },
   clearLog(){ if(!confirm('Clear the after-action log?'))return; state.log=[]; save(); render(); },
@@ -1453,7 +1628,8 @@ const app = {
     logEvent('GM','New session started'); save(); ui.tab='ops'; render(); renderWx(); },
   wipeAll(){ if(!confirm('WIPE EVERYTHING including your custom library?'))return;
     localStorage.removeItem(LS_KEY);
-    state={weather:'good',control:'Monkey Mountain',flights:[],log:[],seq:1,tuning:structuredClone(DEFAULT_TUNING),library:{weapons:structuredClone(DEFAULT_WEAPONS),airframes:structuredClone(DEFAULT_AIRFRAMES)}};
+    state={weather:'good',control:'Monkey Mountain',flights:[],log:[],seq:1,tuning:structuredClone(DEFAULT_TUNING),
+      library:{weapons:structuredClone(DEFAULT_WEAPONS),airframes:structuredClone(DEFAULT_AIRFRAMES),roster:structuredClone(DEFAULT_ROSTER)}};
     ui.tab='ops'; save(); render(); renderWx(); }
 };
 
@@ -1484,9 +1660,9 @@ function reopenAf(){ // re-render the airframe editor preserving current header 
   if($('#afType')) a.type=$('#afType').value;
   if($('#afRole')) a.role=$('#afRole').value;
   if($('#afCrew')) a.crew=parseInt($('#afCrew').value,10)||1;
-  if($('#afWeight')){ const wv=parseInt($('#afWeight').value,10); a.weight=isNaN(wv)?1:Math.max(0,wv); }
+  if($('#afWeight')){ const wv=parseFloat($('#afWeight').value); a.weight=isNaN(wv)?1:Math.max(0,wv); }
   if($('#afStnA')&&$('#afStnB')) a.stn=[parseInt($('#afStnA').value,10)||10, parseInt($('#afStnB').value,10)||25];
-  if($('#afVnaf')) a.vnaf=$('#afVnaf').checked;
+  if($('#afScaf')) a.scaf=$('#afScaf').checked;
   if($('#afFac')) a.fac=$('#afFac').checked;
   const id=state.library.airframes.find(x=>x.id===a.id)?a.id:null;
   openAirframeEditor(id, true); // re-render from the working copy
