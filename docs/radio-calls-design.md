@@ -5,7 +5,11 @@
 > Q3: character voices — BANDIT stereotypical but fearless; GREASEMONKEY surly;
 > THUNDERBOLT is Lt Col Studebaker-Mackenzie, extreme evangelical, smiting heathens.
 > Q4: ChelteNam moments extend to US voices but only very occasionally.
-> **P5 (template editing UI) deferred** — templates ship as editable data, UI to follow.
+> **BUILT: P1–P5**, including the RADIO tab for editing voices, templates, quips, spoken
+> vocabulary and abort words. Radio data now lives in `state.library` (persisted, exportable),
+> seeded from the `DEFAULT_*` consts and topped up additively on load.
+> **Still unvalidated in a live session** — the open bet remains whether the cards get read
+> aloud under load. Use it once before investing further.
 
 ## Scope (settled)
 

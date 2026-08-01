@@ -44,8 +44,10 @@ Magnitude rank is noted per item.
    has established recurring callsigns in play). Persistent roster with sortie counts, elite flag,
    retire-on-loss. The deeper campaign layer — individually named *pilots* within a unit,
    accuracy history per pilot — remains unbuilt if ever wanted.
-3. **Radio prompt cards** — *magnitude #1, effort M* ← next, **but confirm it's wanted first**
-4. **AAA battle damage** — *magnitude #2, effort M*
+3. ~~**Radio prompt cards**~~ — **DONE** (P1–P5, incl. the RADIO editing tab).
+   See `docs/radio-calls-design.md`. **Not yet tested in a live session** — the open bet is
+   whether the cards actually get read under load. Validate before investing further here.
+4. **AAA battle damage** — *magnitude #2, effort M* ← next
 5. **Target & BDA board** — *magnitude #4, effort M/L*
 
 ---

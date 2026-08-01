@@ -76,6 +76,9 @@
   .rstep.fac{opacity:.75}
   .rnum{flex:none;width:20px;height:20px;border-radius:50%;background:#243024;color:var(--amber2);
     font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:3px}
+  .rcall.prev{font-size:13px;color:#9fb894;margin-top:4px;padding:4px 8px;background:#0c110b;
+    border-left:2px solid var(--line);border-radius:3px}
+  .libitem.voicesel{background:#1e271d;border-radius:4px}
   .rquip{margin-top:10px;padding:8px 10px;background:#2a2213;border:1px dashed var(--amber);
     border-radius:5px;color:var(--amber2);font-family:"Consolas",monospace;font-size:14px}
   .unitnote{margin:6px 0;padding:6px 9px;background:#2e2510;border-left:3px solid var(--amber);
@@ -394,10 +397,21 @@ function migrateState(){
   });
   state.library.roster.forEach(u=>{ if(u.sorties==null) u.sorties=0; if(u.active==null) u.active=true; });
   if(!state.library.quips) state.library.quips = structuredClone(DEFAULT_QUIPS);
+  // radio vocabulary — seed once, then additively top up with anything newly shipped
+  if(!state.library.voices) state.library.voices = structuredClone(DEFAULT_VOICES);
+  Object.entries(DEFAULT_VOICES).forEach(([k,v])=>{ if(!state.library.voices[k]) state.library.voices[k]=structuredClone(v); });
+  if(!state.library.callTemplates) state.library.callTemplates = structuredClone(DEFAULT_CALL_TEMPLATES);
+  Object.entries(DEFAULT_CALL_TEMPLATES).forEach(([k,v])=>{
+    if(!state.library.callTemplates[k]) state.library.callTemplates[k]=structuredClone(v); });
+  if(!state.library.abortWords) state.library.abortWords = structuredClone(DEFAULT_ABORT_WORDS);
+  if(!state.library.spokenWeapons) state.library.spokenWeapons = structuredClone(DEFAULT_WEAPON_SPOKEN);
+  Object.entries(DEFAULT_WEAPON_SPOKEN).forEach(([k,v])=>{ if(!state.library.spokenWeapons[k]) state.library.spokenWeapons[k]=v; });
+  if(!state.library.spokenAirframes) state.library.spokenAirframes = structuredClone(DEFAULT_AIRFRAME_SPOKEN);
+  Object.entries(DEFAULT_AIRFRAME_SPOKEN).forEach(([k,v])=>{ if(!state.library.spokenAirframes[k]) state.library.spokenAirframes[k]=structuredClone(v); });
   // flights created before the radio feature need voices/abort codes/headings
   (state.flights||[]).forEach(f=>{
     if(!f.voice) f.voice = assignVoice(f.operator, f.rosterId ? (state.library.roster||[]).find(u=>u.id===f.rosterId) : null);
-    if(!f.abortCode) f.abortCode = pick(ABORT_WORDS);
+    if(!f.abortCode) f.abortCode = pick(libAbort());
     if(!f.runIn){ const i=rndInt(0,CARDINALS.length-1);
       f.runIn=CARDINALS[i]; f.runOut=CARDINALS[(i+8)%CARDINALS.length]; }
   });
@@ -671,7 +685,7 @@ function genFlight(opts={}){
     airframeId: af.id, airframeName: af.name, type: af.type, fac:!!af.fac,
     configName: cfg.name,
     rosterId: unit?unit.id:null, elite: unit?!!unit.elite:false, unitNotes: unit?(unit.notes||''):'',
-    voice: assignVoice(operator, unit), abortCode: pick(ABORT_WORDS),
+    voice: assignVoice(operator, unit), abortCode: pick(libAbort()),
     // ingress heading with a roughly opposite egress; GM can change either
     runIn: CARDINALS[runHdg], runOut: CARDINALS[(runHdg+8)%CARDINALS.length],
     numAircraft, operator, skill, control: state.control,
@@ -694,18 +708,18 @@ function generateOptions(n, opts){
 //  RADIO PROMPT CARDS — spoken text the GM reads aloud over ACRE2.
 //  Generated from LIVE flight state, so ordnance/playtime are always current.
 //=================================================================
-const ABORT_WORDS = ['HAYSTACK','CIDER','MILKCHURN','TRACTOR','SCRUMPY','GOATSHED','WELLINGTON',
+const DEFAULT_ABORT_WORDS = ['HAYSTACK','CIDER','MILKCHURN','TRACTOR','SCRUMPY','GOATSHED','WELLINGTON',
   'HEDGEROW','PASTY','CLOTTED','BARNDOOR','SILAGE','THATCH','BRAMBLE','CHEDDAR','WURZEL'];
 
 // spoken forms — fall back to the display name when absent, never block
-const WEAPON_SPOKEN = {
+const DEFAULT_WEAPON_SPOKEN = {
   mk81:'Mark eight-one', mk82:'Mark eight-two', snake:'Snakeye', mk83:'Mark eight-three',
   mk84:'Mark eight-four', m117:'seven-fifty pounder', napalm:'napalm', cbu:'cluster',
   ffar:'two point seven five rockets', zuni:'Zuni', gun20:'twenty mike-mike',
   gunpod:'twenty mike-mike pod', minigun:'minigun', hrocket:'rockets', gl40:'forty mike-mike',
   minigun3:'miniguns', flare:'flares'
 };
-const AIRFRAME_SPOKEN = {   // [singular, plural]
+const DEFAULT_AIRFRAME_SPOKEN = {   // [singular, plural]
   a1:['Skyraider','Skyraiders'], a4:['Skyhawk','Skyhawks'], a6:['Intruder','Intruders'],
   a7:['Corsair','Corsairs'], f100:['Super Sabre','Super Sabres'], f105:['Thud','Thuds'],
   f4:['Phantom','Phantoms'], a37:['Dragonfly','Dragonflies'], f5:['Freedom Fighter','Freedom Fighters'],
@@ -714,7 +728,10 @@ const AIRFRAME_SPOKEN = {   // [singular, plural]
   oh6:['Loach','Loaches'], ac47:['Spooky','Spookies'], b52:['BUFF','BUFFs']
 };
 
-const VOICES = {
+const DEFAULT_VOICES = {
+  // NEUTRAL is the fallback used whenever a voice leaves a line blank. character:true keeps it
+  // out of random assignment while still allowing it to be edited and picked deliberately.
+  NEUTRAL:{label:'Neutral (fallback)', side:'US', character:true},
   KANSAS:{label:'Kansas', side:'US'},        ALABAMA:{label:'Alabama', side:'US'},
   TEXAS:{label:'Texas', side:'US'},          CALIFORNIA:{label:'California', side:'US'},
   JERSEY:{label:'New Jersey', side:'US'},
@@ -727,7 +744,7 @@ const VOICES = {
 };
 
 // {CONTROL} {CS} {SHIPWORD} {TYPE} {ORD} {PLAY} {ABORT} {IN} {OUT} {AWAY}
-const CALL_TEMPLATES = {
+const DEFAULT_CALL_TEMPLATES = {
   NEUTRAL:{
     checkin:"{CONTROL}, {CS}. {SHIPWORD} {TYPE}. {ORD}. Playtime {PLAY}. Abort code {ABORT}.",
     talkon:"{CS}, ready for your talk-on.", run_in:"{CS}, in from the {IN}.",
@@ -830,6 +847,20 @@ const DEFAULT_QUIPS = [
   {cat:'general', side:'US', text:"You want that hit now, or after my coffee?"}
 ];
 
+// the radio vocabulary lives in the library so it is all GM-editable and persisted;
+// accessors fall back to the shipped defaults so nothing breaks before seeding
+function libVoices(){ return (state.library && state.library.voices) || DEFAULT_VOICES; }
+function libTemplates(){ return (state.library && state.library.callTemplates) || DEFAULT_CALL_TEMPLATES; }
+function libAbort(){ const a=(state.library && state.library.abortWords); return (a&&a.length)?a:DEFAULT_ABORT_WORDS; }
+function libWSpoken(){ return (state.library && state.library.spokenWeapons) || DEFAULT_WEAPON_SPOKEN; }
+function libAfSpoken(){ return (state.library && state.library.spokenAirframes) || DEFAULT_AIRFRAME_SPOKEN; }
+const CALL_IDS = [
+  ['checkin','Check-in'], ['talkon','Talk-on'],
+  ['run_in','Attack run — in'], ['run_5','Attack run — five seconds'],
+  ['run_away','Attack run — weapon away'], ['run_off','Attack run — off'],
+  ['bda','BDA'], ['winchester','Winchester'], ['bingo','Bingo / RTB'], ['aaa','Taking fire']
+];
+
 //---- spoken-number helpers ----
 const SMALL_WORDS=['zero','one','two','three','four','five','six','seven','eight','nine','ten',
   'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
@@ -854,9 +885,9 @@ function tidySpoken(s){
 }
 function spokenDigits(n){ return String(Math.max(0,Math.round(n))).split('')
   .map(d=>DIGIT_WORDS[+d].toLowerCase()).join(' '); }
-function wSpoken(wid){ return WEAPON_SPOKEN[wid] || (W(wid).name||wid); }
+function wSpoken(wid){ return libWSpoken()[wid] || (W(wid).name||wid); }
 function afSpoken(f, plural){
-  const m = AIRFRAME_SPOKEN[f.airframeId];
+  const m = libAfSpoken()[f.airframeId];
   if(m) return plural ? m[1] : m[0];
   const n = (f.airframeName||'').replace(/\s*\(.*\)$/,'').split(' ').slice(-1)[0] || f.airframeName;
   return plural ? n+'s' : n;
@@ -884,13 +915,15 @@ function awayWord(f){
   return 'Weapon away';
 }
 function assignVoice(operator, unit){
-  if(unit && unit.voice && VOICES[unit.voice]) return unit.voice;
-  const pool=Object.keys(VOICES).filter(k=>!VOICES[k].character && VOICES[k].side===operator);
+  const V=libVoices();
+  if(unit && unit.voice && V[unit.voice]) return unit.voice;
+  const pool=Object.keys(V).filter(k=>!V[k].character && V[k].side===operator);
   return pool.length ? pick(pool) : 'NEUTRAL';
 }
 function callTemplate(voice, id){
-  const v=CALL_TEMPLATES[voice]||{};
-  return v[id] || CALL_TEMPLATES.NEUTRAL[id] || '';
+  const T2=libTemplates();
+  const v=T2[voice]||{};
+  return v[id] || (T2.NEUTRAL&&T2.NEUTRAL[id]) || DEFAULT_CALL_TEMPLATES.NEUTRAL[id] || '';
 }
 function renderCall(f, id){
   let s = callTemplate(f.voice, id);
@@ -975,6 +1008,7 @@ function render(){
   else if(ui.tab==='tuning') m.innerHTML = viewTuning();
   else if(ui.tab==='log') m.innerHTML = viewLog();
   else if(ui.tab==='library') m.innerHTML = viewLibrary();
+  else if(ui.tab==='radio') m.innerHTML = viewRadio();
   else if(ui.tab==='session') m.innerHTML = viewSession();
 }
 
@@ -987,6 +1021,7 @@ function renderNav(){
     ['tuning','TUNING', 0],
     ['log','AFTER-ACTION LOG', 0],
     ['library','LIBRARY', 0],
+    ['radio','RADIO', 0],
     ['session','SESSION', 0]
   ];
   $('#nav').innerHTML = tabs.map(([id,label,b])=>
@@ -1334,6 +1369,109 @@ function viewLibrary(){
   return h;
 }
 
+// ---- RADIO (voices, templates, quips, spoken vocabulary) ----
+// a throwaway flight used only to preview templates while editing
+function previewFlight(voiceKey){
+  const V=libVoices()[voiceKey]||{side:'US'};
+  const af=state.library.airframes.find(a=>a.id==='a1')||state.library.airframes[0]||{};
+  return { id:-1, callsign:'SAMPLE', flightNo:'FOUR TWO', control:state.control,
+    airframeId:af.id, airframeName:af.name, numAircraft:2, operator:V.side||'US',
+    voice:voiceKey, abortCode:'CIDER', runIn:'S', runOut:'N', stationSec:25*60,
+    configName:'Strike', status:'onstation',
+    loadout:[{w:'mk82',cat:'bomb',planeMax:3,perPlane:[3,3]},{w:'napalm',cat:'napalm',planeMax:1,perPlane:[1,1]}],
+    guns:[{w:'gun20',name:'20mm Cannon',state:'full'}] };
+}
+function viewRadio(){
+  const V=libVoices();
+  const sel = ui.radioVoice && V[ui.radioVoice] ? ui.radioVoice : Object.keys(V)[0];
+  ui.radioVoice = sel;
+  const pf = previewFlight(sel);
+
+  let h = `<div class="card"><div class="hd"><h2>Radio — Voices &amp; Templates</h2><span class="sp"></span>
+      <button class="small" onclick="app.addVoice()">+ Add voice</button>
+      <button class="small danger" onclick="app.resetRadio()">Reset radio defaults</button></div>
+    <div class="bd"><div class="hint">Every line the tool puts in your mouth is editable here. Tokens:
+      <b class="mono">{CONTROL} {CS} {SHIPWORD} {TYPE} {ORD} {PLAY} {ABORT} {IN} {OUT} {AWAY}</b>.
+      A blank template falls back to the NEUTRAL voice.</div></div></div>`;
+
+  h += '<div class="row"><div class="col" style="flex:.8">';
+  h += `<div class="card"><div class="hd"><h3>Voices</h3></div><div class="bd">`;
+  Object.entries(V).forEach(([k,v])=>{
+    h += `<div class="libitem${k===sel?' voicesel':''}">
+      <button class="small ${k===sel?'primary':''}" style="min-width:150px;text-align:left"
+        onclick="app.pickVoice('${k}')">${esc(v.label||k)}</button>
+      <span class="tag ${v.side==='SCAF'?'scaf':'us'}">${esc(v.side||'US')}</span>
+      ${v.character?'<span class="tag known">★</span>':''}
+      <span class="sp"></span>
+      <button class="small" onclick="app.dupVoice('${k}')" title="duplicate">⧉</button>
+      ${k==='NEUTRAL'?'':`<button class="small danger" onclick="app.delVoice('${k}')">✕</button>`}
+    </div>`;
+  });
+  h += `<div class="hint">★ = character voice: never assigned at random, only to a known unit.</div>
+    </div></div></div><div class="col" style="flex:2">`;
+
+  const vs=V[sel]||{};
+  h += `<div class="card"><div class="hd"><h3>${esc(vs.label||sel)}</h3><span class="sp"></span>
+      <button class="small primary" onclick="app.saveVoice('${sel}')">Save voice</button></div>
+    <div class="bd">
+    <div class="grid3">
+      <div class="field"><label>Display name</label><input id="vLabel" value="${esc(vs.label||sel)}"></div>
+      <div class="field"><label>Side</label><select id="vSide">
+        <option value="US" ${vs.side!=='SCAF'?'selected':''}>US</option>
+        <option value="SCAF" ${vs.side==='SCAF'?'selected':''}>SCAF</option></select></div>
+      <div class="field"><label style="margin-top:18px">
+        <input type="checkbox" id="vChar" ${vs.character?'checked':''}> Character voice (known units only)</label></div>
+    </div>
+    <hr>`;
+  CALL_IDS.forEach(([id,label])=>{
+    const cur=(libTemplates()[sel]||{})[id]||'';
+    h += `<div class="field"><label>${label}</label>
+      <textarea id="vt_${id}" rows="2" oninput="app.previewCall('${sel}','${id}')">${esc(cur)}</textarea>
+      <div class="rcall prev" id="vp_${id}">${esc(renderCall(Object.assign({},pf),id))}</div></div>`;
+  });
+  h += `</div></div></div></div>`;
+
+  // ---- quips ----
+  h += `<div class="card"><div class="hd"><h2>ChelteNam Moments</h2>
+      <span class="muted" style="font-size:12px">comedy interjections offered on demand or automatically</span>
+      <span class="sp"></span><button class="small primary" onclick="app.addQuip()">+ Add</button></div>
+    <div class="bd">`;
+  (state.library.quips||[]).forEach((q,i)=>{
+    h += `<div class="flex" style="gap:6px;margin:4px 0;flex-wrap:wrap">
+      <select id="qc${i}" onchange="app.saveQuips()" style="width:110px">
+        ${['ordnance','nav','direction','general'].map(c=>`<option ${c===q.cat?'selected':''}>${c}</option>`).join('')}</select>
+      <select id="qs${i}" onchange="app.saveQuips()" style="width:90px">
+        ${['SCAF','US',''].map(s=>`<option value="${s}" ${s===(q.side||'')?'selected':''}>${s||'any'}</option>`).join('')}</select>
+      <input id="qt${i}" value="${esc(q.text)}" style="flex:1;min-width:240px" onchange="app.saveQuips()">
+      <button class="small danger" onclick="app.delQuip(${i})">✕</button></div>`;
+  });
+  if(!(state.library.quips||[]).length) h += '<div class="empty">No quips.</div>';
+  h += `</div></div>`;
+
+  // ---- spoken vocabulary ----
+  h += `<div class="row"><div class="col"><div class="card"><div class="hd"><h3>Spoken weapon names</h3>
+      <span class="sp"></span><button class="small primary" onclick="app.saveSpoken()">Save</button></div><div class="bd">`;
+  Object.entries(state.library.weapons).forEach(([wid,w])=>{
+    h += `<div class="flex" style="gap:6px;margin:3px 0"><span class="muted" style="flex:1;font-size:12px">${esc(w.name)}</span>
+      <input id="sw_${wid}" value="${esc(libWSpoken()[wid]||'')}" placeholder="${esc(w.name)}" style="flex:1"></div>`;
+  });
+  h += `</div></div></div><div class="col"><div class="card"><div class="hd"><h3>Spoken airframe names</h3>
+      <span class="sp"></span><button class="small primary" onclick="app.saveSpoken()">Save</button></div><div class="bd">`;
+  state.library.airframes.forEach(a=>{
+    const m=libAfSpoken()[a.id]||[];
+    h += `<div class="flex" style="gap:6px;margin:3px 0"><span class="muted" style="flex:1;font-size:12px">${esc(a.name)}</span>
+      <input id="sa1_${a.id}" value="${esc(m[0]||'')}" placeholder="singular" style="width:110px">
+      <input id="sa2_${a.id}" value="${esc(m[1]||'')}" placeholder="plural" style="width:110px"></div>`;
+  });
+  h += `</div></div>
+    <div class="card"><div class="hd"><h3>Abort code words</h3><span class="sp"></span>
+      <button class="small primary" onclick="app.saveAbort()">Save</button></div><div class="bd">
+      <textarea id="abortList" rows="3" style="width:100%">${esc(libAbort().join(', '))}</textarea>
+      <div class="hint">Comma separated. One is drawn per flight and spoken in its check-in.</div>
+    </div></div></div></div>`;
+  return h;
+}
+
 // ---- SESSION ----
 function viewSession(){
   return `<div class="card"><div class="hd"><h2>Session / Data</h2></div><div class="bd">
@@ -1639,7 +1777,7 @@ function openRadioPanel(fid, callId){
   const open = callId || (ui._radio && ui._radio.fid===fid ? ui._radio.call : null) || defaultCallFor(f);
   if(!ui._radio || ui._radio.fid!==fid || ui._radio.call!==open) ui._radio={fid, call:open, quip:null};
   const meta=RADIO_CALLS.find(c=>c.id===open)||RADIO_CALLS[0];
-  const v=VOICES[f.voice]||{label:f.voice||'—'};
+  const v=libVoices()[f.voice]||{label:f.voice||'—'};
   showModal(`<div class="hd"><h3>📻 ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
       <button class="small" onclick="app.closeModal()">✕</button></div>
    <div class="bd">
@@ -1692,7 +1830,7 @@ function openUnitEditor(id, seed){
       <div class="field"><label>Sorties flown</label><input type="number" min="0" id="uSo" value="${u.sorties||0}"></div>
       <div class="field"><label>Voice (blank = random per appearance)</label><select id="uVoice">
         <option value="">— random —</option>
-        ${Object.entries(VOICES).map(([k,v])=>opt(k,u.voice||'',v.label+(v.character?' ★':'')+' ['+v.side+']')).join('')}</select></div>
+        ${Object.entries(libVoices()).map(([k,v])=>opt(k,u.voice||'',v.label+(v.character?' ★':'')+' ['+v.side+']')).join('')}</select></div>
     </div>
     <div class="flex" style="gap:16px">
       <label style="margin:0" id="uEliteWrap"><input type="checkbox" id="uElite" ${u.elite?'checked':''}> Elite (exempt from SCAF accuracy penalty)</label>
@@ -1931,7 +2069,87 @@ const app = {
   setToggle(key,val){ state.tuning[key]=val;
     if(key==='perPlane') logEvent('GM','Ordnance accounting set to '+(val?'PER AIRCRAFT':'PER FLIGHT'));
     save(); render(); },
-  // radio
+  // ---- radio library editing ----
+  pickVoice(k){ ui.radioVoice=k; render(); },
+  previewCall(voiceKey, id){
+    const el=document.getElementById('vt_'+id), out=document.getElementById('vp_'+id);
+    if(!el||!out) return;
+    // preview without committing: temporarily apply the edited text
+    const tpl=libTemplates(); if(!tpl[voiceKey]) tpl[voiceKey]={};
+    const prev=tpl[voiceKey][id]; tpl[voiceKey][id]=el.value;
+    out.textContent = renderCall(previewFlight(voiceKey), id);
+    tpl[voiceKey][id]=prev;
+  },
+  saveVoice(k){
+    const V=libVoices(), tpl=libTemplates();
+    V[k]=V[k]||{}; V[k].label=$('#vLabel').value.trim()||k;
+    V[k].side=$('#vSide').value; V[k].character=$('#vChar').checked;
+    tpl[k]=tpl[k]||{};
+    CALL_IDS.forEach(([id])=>{ const el=document.getElementById('vt_'+id);
+      if(el){ const v=el.value.trim(); if(v) tpl[k][id]=v; else delete tpl[k][id]; } });
+    save(); render(); toast('Voice saved');
+  },
+  addVoice(){
+    const name=prompt('New voice name (e.g. BOSTON):'); if(!name) return;
+    const key=name.trim().toUpperCase().replace(/[^A-Z0-9_]/g,'_'); if(!key) return;
+    if(libVoices()[key]){ alert('That voice already exists.'); return; }
+    libVoices()[key]={label:name.trim(), side:'US', character:false};
+    libTemplates()[key]=structuredClone(DEFAULT_CALL_TEMPLATES.NEUTRAL);
+    ui.radioVoice=key; save(); render(); toast('Voice added — edit its lines');
+  },
+  dupVoice(k){
+    const name=prompt('Name for the copy of '+k+':', k+' COPY'); if(!name) return;
+    const key=name.trim().toUpperCase().replace(/[^A-Z0-9_]/g,'_'); if(!key) return;
+    if(libVoices()[key]){ alert('That voice already exists.'); return; }
+    libVoices()[key]=Object.assign({}, libVoices()[k], {label:name.trim()});
+    libTemplates()[key]=structuredClone(libTemplates()[k]||DEFAULT_CALL_TEMPLATES.NEUTRAL);
+    ui.radioVoice=key; save(); render(); toast('Voice duplicated');
+  },
+  delVoice(k){
+    const inUse=(state.library.roster||[]).filter(u=>u.voice===k).map(u=>u.callsign);
+    if(inUse.length && !confirm(k+' is used by: '+inUse.join(', ')+'.\nThey will fall back to a random voice. Delete anyway?')) return;
+    if(!inUse.length && !confirm('Delete voice '+k+'?')) return;
+    delete libVoices()[k]; delete libTemplates()[k];
+    (state.library.roster||[]).forEach(u=>{ if(u.voice===k) u.voice=null; });
+    ui.radioVoice=null; save(); render();
+  },
+  addQuip(){ state.library.quips=state.library.quips||[];
+    state.library.quips.push({cat:'general', side:'SCAF', text:'New line…'}); save(); render(); },
+  delQuip(i){ state.library.quips.splice(i,1); save(); render(); },
+  saveQuips(){
+    (state.library.quips||[]).forEach((q,i)=>{
+      const c=document.getElementById('qc'+i), s=document.getElementById('qs'+i), t=document.getElementById('qt'+i);
+      if(c) q.cat=c.value; if(s) q.side=s.value||null; if(t) q.text=t.value;
+    });
+    save(); toast('Quips saved');
+  },
+  saveSpoken(){
+    Object.keys(state.library.weapons).forEach(wid=>{ const el=document.getElementById('sw_'+wid);
+      if(el){ const v=el.value.trim(); if(v) state.library.spokenWeapons[wid]=v; else delete state.library.spokenWeapons[wid]; } });
+    state.library.airframes.forEach(a=>{
+      const s=document.getElementById('sa1_'+a.id), p=document.getElementById('sa2_'+a.id);
+      if(s&&p){ const sv=s.value.trim(), pv=p.value.trim();
+        if(sv||pv) state.library.spokenAirframes[a.id]=[sv||a.name, pv||((sv||a.name)+'s')];
+        else delete state.library.spokenAirframes[a.id]; } });
+    save(); render(); toast('Spoken names saved');
+  },
+  saveAbort(){
+    const raw=$('#abortList').value.split(/[,\n]/).map(s=>s.trim().toUpperCase()).filter(Boolean);
+    state.library.abortWords = raw.length?raw:structuredClone(DEFAULT_ABORT_WORDS);
+    save(); render(); toast('Abort words saved');
+  },
+  resetRadio(){
+    if(!confirm('Reset all voices, templates, quips, spoken names and abort words to defaults?'))return;
+    state.library.voices=structuredClone(DEFAULT_VOICES);
+    state.library.callTemplates=structuredClone(DEFAULT_CALL_TEMPLATES);
+    state.library.quips=structuredClone(DEFAULT_QUIPS);
+    state.library.spokenWeapons=structuredClone(DEFAULT_WEAPON_SPOKEN);
+    state.library.spokenAirframes=structuredClone(DEFAULT_AIRFRAME_SPOKEN);
+    state.library.abortWords=structuredClone(DEFAULT_ABORT_WORDS);
+    ui.radioVoice=null; save(); render(); toast('Radio defaults restored');
+  },
+
+  // radio panel
   radio(fid, callId){ if(ui._radio) ui._radio.quip=null; openRadioPanel(fid, callId); },
   radioOptions(){ openOptionsScript(); },
   radioQuip(fid, cat){
