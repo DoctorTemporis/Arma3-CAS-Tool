@@ -806,6 +806,7 @@ function flightCard(f){
     h += `<button onclick="app.setStatus(${f.id},'rtb')">RTB (Bingo/Winch)</button>`;
   }
   h += `<button class="danger" onclick="app.setStatus(${f.id},'shotdown')">Shot Down</button>`;
+  if(!f.rosterId) h += `<button onclick="app.promoteFlight(${f.id})" title="Add this callsign to the known-unit roster">★ Roster</button>`;
   h += `<button onclick="app.edit(${f.id})">Edit / Override</button>`;
   h += `<button class="danger small" onclick="app.remove(${f.id})">Remove</button>`;
   h += '</div>';
@@ -820,6 +821,7 @@ function closedCard(f){
     <b class="mono">${esc(f.callsign)} ${esc(f.flightNo)}</b>
     <span class="tag ${f.type==='FW'?'fw':'rw'}">${f.type}</span>
     <span class="sp"></span>
+    ${f.rosterId?'':`<button class="small" onclick="app.promoteFlight(${f.id})" title="Add this callsign to the known-unit roster">★ Roster</button>`}
     <button class="small" onclick="app.edit(${f.id})">Edit</button>
     <button class="small" onclick="app.reactivate(${f.id})">Re-open</button>
     <button class="small danger" onclick="app.remove(${f.id})">✕</button>
@@ -988,6 +990,7 @@ function viewLibrary(){
   let h = `<div class="card"><div class="hd"><h2>Known Units — Roster</h2>
       <span class="muted" style="font-size:12px">recurring callsigns; persist across sessions</span>
       <span class="sp"></span>
+      <button class="small" onclick="app.promoteUnit()">★ Add from past flight</button>
       <button class="small primary" onclick="app.editUnit(null)">+ Add unit</button></div>
     <div class="bd">`;
   const roster = state.library.roster||[];
@@ -1308,11 +1311,12 @@ function openAirframeEditor(id, useExisting){
 }
 
 // known-unit (roster) editor
-function openUnitEditor(id){
+function openUnitEditor(id, seed){
   const isNew=!id;
-  const u = isNew ? {id:'u'+Date.now(), callsign:'', flightNo:'', airframeId:(state.library.airframes[0]||{}).id,
+  const u = seed ? seed
+          : (isNew ? {id:'u'+Date.now(), callsign:'', flightNo:'', airframeId:(state.library.airframes[0]||{}).id,
                      operator:'US', skill:'veteran', elite:false, numAircraft:2, weight:2, active:true, sorties:0, notes:''}
-                  : structuredClone((state.library.roster||[]).find(x=>x.id===id));
+                  : structuredClone((state.library.roster||[]).find(x=>x.id===id)));
   const opt=(v,cur,lbl)=>`<option value="${v}" ${v===cur?'selected':''}>${lbl}</option>`;
   showModal(`<div class="hd"><h3>${isNew?'Add':'Edit'} Known Unit</h3><button class="small" onclick="app.closeModal()">✕</button></div>
    <div class="bd">
@@ -1321,7 +1325,7 @@ function openUnitEditor(id){
       <div class="field"><label>Fixed flight no. (blank = random digits)</label><input id="uFn" value="${esc(u.flightNo||'')}" placeholder="FLIGHT"></div>
       <div class="field"><label>Airframe</label><select id="uAf">
         ${state.library.airframes.map(a=>opt(a.id,u.airframeId,a.name)).join('')}</select></div>
-      <div class="field"><label>Operator</label><select id="uOp">${opt('US',u.operator,'US')}${opt('SCAF',u.operator,'SCAF (local)')}</select></div>
+      <div class="field"><label>Operator</label><select id="uOp" onchange="app._uOpChange()">${opt('US',u.operator,'US')}${opt('SCAF',u.operator,'SCAF (local)')}</select></div>
       <div class="field"><label>Pilot skill</label><select id="uSk">
         ${Object.entries(SKILLS).map(([k,v])=>opt(k,u.skill,v.label)).join('')}</select></div>
       <div class="field"><label>Aircraft in flight</label><input type="number" min="1" id="uNa" value="${u.numAircraft||1}"></div>
@@ -1329,14 +1333,49 @@ function openUnitEditor(id){
       <div class="field"><label>Sorties flown</label><input type="number" min="0" id="uSo" value="${u.sorties||0}"></div>
     </div>
     <div class="flex" style="gap:16px">
-      <label style="margin:0"><input type="checkbox" id="uElite" ${u.elite?'checked':''}> Elite (exempt from SCAF accuracy penalty)</label>
+      <label style="margin:0" id="uEliteWrap"><input type="checkbox" id="uElite" ${u.elite?'checked':''}> Elite (exempt from SCAF accuracy penalty)</label>
       <label style="margin:0"><input type="checkbox" id="uActive" ${u.active!==false?'checked':''}> Active (uncheck to retire)</label>
     </div>
+    <div class="hint" id="uEliteHint"></div>
     <div class="field" style="margin-top:10px"><label>Reputation / notes (shown to you when they turn up)</label>
       <textarea id="uNotes" rows="2">${esc(u.notes||'')}</textarea></div>
    </div>
    <div class="ft"><button onclick="app.closeModal()">Cancel</button>
      <button class="primary" onclick="app.saveUnit('${u.id}',${isNew})">Save unit</button></div>`);
+  app._uOpChange();          // elite only applies to SCAF — set the initial enabled state
+}
+
+// build a roster-unit seed from a flight the GM has already used this session
+function unitSeedFromFlight(f){
+  return { id:'u'+Date.now(), callsign:f.callsign, flightNo:'', airframeId:f.airframeId,
+    operator:f.operator, skill:f.skill, elite:false, numAircraft:f.numAircraft,
+    weight:2, active:true, sorties:(f.status==='available'?0:1), notes:'' };
+}
+// picker: choose one of this session's flights to promote to the roster
+function openPromotePicker(){
+  const seen=new Set(); const cands=[];
+  state.flights.slice().reverse().forEach(f=>{        // most recent first
+    if(f.rosterId) return;                            // already a known unit
+    const key=f.callsign.toUpperCase();
+    if(seen.has(key)) return;
+    seen.add(key); cands.push(f);
+  });
+  const rows = cands.map(f=>`<div class="libitem">
+      <b class="mono">${esc(f.callsign)}</b>
+      <span class="muted" style="font-size:11px">${esc(f.flightNo)}</span>
+      <span class="tag ${f.type==='FW'?'fw':'rw'}">${f.type}</span>
+      <span class="tag ${f.operator==='SCAF'?'scaf':'us'}">${f.operator}</span>
+      <span class="muted" style="flex:1;font-size:12px">${f.numAircraft}× ${esc(f.airframeName)}
+        • ${SKILLS[f.skill]?SKILLS[f.skill].label:f.skill} • ${statusLabel(f.status)}</span>
+      <button class="small primary" onclick="app.promoteFlight(${f.id})">Add →</button>
+    </div>`).join('');
+  showModal(`<div class="hd"><h3>Add Known Unit from a Past Flight</h3>
+    <button class="small" onclick="app.closeModal()">✕</button></div>
+   <div class="bd">
+    <div class="hint" style="margin-bottom:8px">Pick a flight from this session to promote. Its callsign, airframe, operator, skill and section size are carried over; the flight number is dropped so they get fresh digits each appearance. You can adjust everything before saving.</div>
+    ${rows || '<div class="empty">No eligible flights this session.</div>'}
+   </div>
+   <div class="ft"><button onclick="app.closeModal()">Close</button></div>`);
 }
 
 // weapon editor
@@ -1555,13 +1594,34 @@ const app = {
   editAirframe(id){ openAirframeEditor(id); },
   editWeapon(id){ openWeaponEditor(id); },
   editUnit(id){ openUnitEditor(id); },
+  promoteUnit(){ openPromotePicker(); },
+  promoteFlight(fid){
+    const f=state.flights.find(x=>x.id===fid); if(!f)return;
+    const dupe=(state.library.roster||[]).find(u=>u.callsign.toUpperCase()===f.callsign.toUpperCase());
+    if(dupe && !confirm(f.callsign+' is already on the roster.\nAdd a second entry anyway?')) return;
+    openUnitEditor(null, unitSeedFromFlight(f));
+  },
+  // "Elite" exempts a unit from the SCAF penalty, so it is meaningless for US units
+  _uOpChange(){
+    const op=$('#uOp'), cb=$('#uElite'), wrap=$('#uEliteWrap'), hint=$('#uEliteHint');
+    if(!op||!cb) return;
+    const isUS = op.value==='US';
+    cb.disabled = isUS;
+    if(isUS) cb.checked = false;
+    if(wrap){ wrap.style.opacity = isUS?'.4':'1'; wrap.style.cursor = isUS?'not-allowed':'pointer'; }
+    if(hint) hint.textContent = isUS
+      ? 'Elite applies only to SCAF units — it waives the SCAF accuracy penalty, which US units never take.'
+      : 'Elite waives the SCAF accuracy penalty, so this unit shoots to US standard (e.g. BANDIT).';
+  },
   saveUnit(id, isNew){
+    const isUS = $('#uOp').value==='US';
     const u={ id, callsign:($('#uCs').value.trim().toUpperCase()||'UNNAMED'), flightNo:$('#uFn').value.trim().toUpperCase(),
       airframeId:$('#uAf').value, operator:$('#uOp').value, skill:$('#uSk').value,
       numAircraft:Math.max(1,parseInt($('#uNa').value,10)||1),
       weight:(()=>{const v=parseFloat($('#uWt').value); return isNaN(v)?1:Math.max(0,v);})(),
       sorties:Math.max(0,parseInt($('#uSo').value,10)||0),
-      elite:$('#uElite').checked, active:$('#uActive').checked, notes:$('#uNotes').value.trim() };
+      elite: isUS ? false : $('#uElite').checked,     // never persist elite on a US unit
+      active:$('#uActive').checked, notes:$('#uNotes').value.trim() };
     if(!state.library.roster) state.library.roster=[];
     if(isNew) state.library.roster.push(u);
     else { const i=state.library.roster.findIndex(x=>x.id===id); if(i>=0) state.library.roster[i]=u; }
