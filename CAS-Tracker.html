@@ -115,6 +115,13 @@
   hr{border:none;border-top:1px solid var(--line);margin:12px 0}
   .chip{cursor:pointer;padding:4px 10px;border:1px solid var(--line);border-radius:14px;font-size:12px}
   .chip.on{background:#3a2f12;border-color:var(--amber);color:var(--amber2)}
+  .card.alerting{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber),0 2px 14px rgba(224,168,60,.25);
+    animation:alertPulse 1.6s ease-in-out infinite}
+  @keyframes alertPulse{0%,100%{box-shadow:0 0 0 1px var(--amber),0 2px 14px rgba(224,168,60,.18)}
+    50%{box-shadow:0 0 0 2px var(--amber),0 2px 20px rgba(224,168,60,.45)}}
+  .alertbar{display:flex;align-items:center;gap:10px;margin-bottom:9px;padding:7px 10px;
+    background:#3a2f12;border:1px solid var(--amber);border-radius:5px;color:var(--amber2);
+    font-weight:700;font-size:13px;letter-spacing:.3px}
   .etaBox{display:flex;justify-content:space-between;gap:10px;margin:7px 0;padding:6px 10px;
     background:#12180f;border:1px solid var(--line);border-radius:5px;font-size:12px;color:var(--muted)}
   .etaBox b{color:var(--amber2);font-size:15px}
@@ -180,6 +187,12 @@ const DEFAULT_TUNING = {
   lowFuelMin:0.45, lowFuelMax:0.70,// fuel factor applied to station time when low
   // system
   perPlane:true,                   // true = ordnance tracked/employed per aircraft; false = per flight (pooled)
+  // alerts (GM is watching the game, not the tracker — audio is the primary channel)
+  alertsOn:true, alertVol:60,      // master toggle + volume %
+  bingoWarn1:5, bingoWarn2:2,      // station-time warnings, minutes remaining (0 = off)
+  alertExpired:true,               // station time hit zero
+  alertArrival:true,               // arrived overhead / awaiting check-in
+  alertWinchester:true,            // all ordnance expended
   // composition
   fwBias:55,                       // % chance an "Any" option is fixed-wing (rest rotary)
   vnafChance:35,                   // % chance a VNAF-capable flight is local
@@ -372,6 +385,63 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;'
 let toastT=null;
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show');
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
+
+//=================================================================
+//  ALERTS — audio is the primary channel (GM is looking at the game).
+//  Tones are synthesised, so the file stays self-contained.
+//=================================================================
+let _actx=null;
+function audioCtx(){
+  if(!_actx){ try{ _actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } }
+  if(_actx.state==='suspended') _actx.resume().catch(()=>{});
+  return _actx;
+}
+// browsers block audio until a user gesture — unlock on the first interaction
+document.addEventListener('pointerdown', ()=>{ audioCtx(); }, {once:true});
+document.addEventListener('keydown', ()=>{ audioCtx(); }, {once:true});
+
+function beep(freq, dur, delay, vol, wave){
+  const ctx=audioCtx(); if(!ctx) return;
+  const o=ctx.createOscillator(), g=ctx.createGain();
+  o.type=wave||'triangle'; o.frequency.value=freq;
+  const t0=ctx.currentTime+(delay||0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol), t0+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(t0); o.stop(t0+dur+0.03);
+}
+// [freq, duration, delay] — distinct shapes so events are identifiable without looking
+const ALERT_SOUNDS = {
+  arrival:    [[660,0.13,0],[880,0.20,0.15]],                        // rising: someone's overhead
+  bingo1:     [[560,0.16,0]],                                        // single: first fuel warning
+  bingo2:     [[760,0.11,0],[760,0.11,0.16]],                        // double: urgent fuel warning
+  expired:    [[840,0.13,0],[660,0.13,0.15],[480,0.30,0.30]],        // descending triple: out of time
+  winchester: [[420,0.12,0],[620,0.22,0.14]],                        // low-high: out of ordnance
+  test:       [[700,0.15,0],[900,0.2,0.17]]
+};
+function playAlertSound(kind){
+  const t=T(); if(!t.alertsOn && kind!=='test') return;
+  const vol = clamp((t.alertVol==null?60:t.alertVol)/100, 0, 1) * 0.28;   // headroom: never harsh
+  (ALERT_SOUNDS[kind]||ALERT_SOUNDS.test).forEach(([f,d,delay])=>beep(f,d,delay,vol));
+}
+// title flashing so it's visible in the taskbar when the browser is behind the game
+const BASE_TITLE='Arma 3 CAS / FAC Tracker';
+let _titleT=null;
+function flashTitle(msg){
+  clearTimeout(_titleT);
+  document.title='⚠ '+msg;
+  _titleT=setTimeout(()=>{ document.title=BASE_TITLE; }, 20000);
+}
+window.addEventListener('focus', ()=>{ clearTimeout(_titleT); document.title=BASE_TITLE; });
+
+function fireAlert(f, kind, msg){
+  if(!T().alertsOn) return;
+  playAlertSound(kind);
+  if(f){ f.alertMsg = msg; }                 // card badge until acknowledged
+  flashTitle(msg);
+  toast(msg);
+}
 const DIGIT_WORDS = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE'];
 const CALLSIGN_WORDS = [
   'VIPER','COBRA','RAPTOR','FALCON','HAWK','EAGLE','RAVEN','CONDOR','PHOENIX','TALON',
@@ -595,7 +665,7 @@ function flightCard(f){
   const clkVal = (onstn || isCheckin) ? f.stationSec : f.etaSec;
   const clkLabel = onstn ? 'ON STATION' : (isCheckin ? 'AWAITING CHECK-IN' : 'ETA TO STATION');
   const clkCls = (counting!=null) ? (counting<=60?'crit':(counting<=180?'warn':'')) : '';
-  let h = `<div class="card"><div class="hd">
+  let h = `<div class="card${f.alertMsg?' alerting':''}"><div class="hd">
     <span class="status s-${f.status}">${statusLabel(f.status)}</span>
     <b class="mono" style="font-size:16px">${esc(f.callsign)} ${esc(f.flightNo)}</b>
     <span class="tag ${f.type==='FW'?'fw':'rw'}">${f.type}</span>
@@ -608,6 +678,9 @@ function flightCard(f){
       <span id="clk-${f.id}" class="clock ${clkCls}">${fmtClock(clkVal)}</span>
     </span>
   </div><div class="bd">`;
+
+  if(f.alertMsg) h += `<div class="alertbar"><span>⚠ ${esc(f.alertMsg)}</span><span class="sp"></span>
+    <button class="small" onclick="app.ackAlert(${f.id})">Acknowledge</button></div>`;
 
   h += `<div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}${f.configName?` <span class="tag cfg">${esc(f.configName)}</span>`:''}</div>`;
   h += `<div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='VNAF'?' <span class="muted">(local)</span>':''} &nbsp;•&nbsp; declared load: <b>${f.loadState.toUpperCase()}</b></div>`;
@@ -737,6 +810,13 @@ function sliderRow(key,label,min,max,step,unit){
 function tuneGroup(title, rows){
   return `<div class="card"><div class="hd"><h3>${title}</h3></div><div class="bd"><div class="tuneGrid">${rows}</div></div></div>`;
 }
+function checkRow(key,label,hint){    // generic on/off row
+  const v=T()[key]!==false;
+  return `<div class="tuneRow"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+    <input type="checkbox" id="ts_${key}" ${v?'checked':''} onchange="app.setToggle('${key}',this.checked)">
+    <span>${label}</span></label>
+    ${hint?`<div class="hint" style="margin-top:2px">${hint}</div>`:''}</div>`;
+}
 function toggleRow(key,label,hint){
   const v=T()[key]!==false;
   return `<div class="tuneRow"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -749,6 +829,21 @@ function viewTuning(){
     <button class="small danger" onclick="app.resetTuning()">Reset to defaults</button></div>
     <div class="bd"><div class="hint" id="tuneReadout">${tuneReadout()}</div>
     <div class="hint">Weather / AAA / skill values are <b>percentage points of hit chance</b>. Everything here persists and applies to the next generated flight and every weapon release.</div></div></div>`;
+
+  h += `<div class="card"><div class="hd"><h3>Alerts</h3><span class="sp"></span>
+      <button class="small" onclick="app.testAlert()">🔊 Test sound</button></div>
+    <div class="bd">
+      <div class="hint" style="margin-bottom:8px">Audio is the channel that reaches you while Arma is in front. Warnings fire once per flight as each threshold is crossed. Set a warning to 0 to disable it.</div>
+      <div class="tuneGrid">
+        ${checkRow('alertsOn','Alerts enabled (master)')}
+        ${sliderRow('alertVol','Volume',0,100,5,'%')}
+        ${sliderRow('bingoWarn1','First playtime warning at',0,20,1,' min')}
+        ${sliderRow('bingoWarn2','Urgent playtime warning at',0,20,1,' min')}
+        ${checkRow('alertExpired','Alert on station time expired (bingo)')}
+        ${checkRow('alertArrival','Alert on arrival overhead / check-in due')}
+        ${checkRow('alertWinchester','Alert on winchester')}
+      </div>
+    </div></div>`;
 
   h += tuneGroup('System', toggleRow('perPlane','Ordnance accounting',
     'On (default): each aircraft in a flight carries and expends its own stores, and you employ planes individually. Off: ordnance is pooled at the flight level — you just say how many weapons drop per pass.'));
@@ -1184,17 +1279,17 @@ const app = {
   },
   checkIn(fid){
     const f = state.flights.find(x=>x.id===fid); if(!f) return;
-    f.status='onstation'; f.arrivedAt=Date.now(); f.etaSec=0;
+    f.status='onstation'; f.arrivedAt=Date.now(); f.etaSec=0; f.alertMsg=null;
     logEvent(f.callsign, 'Checked in on station — playtime '+fmtClock(f.stationSec));
     save(); render(); toast(f.callsign+' checked in — on station');
   },
   toggleAaa(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return;
     f.aaa=!f.aaa; logEvent(f.callsign, f.aaa?'Reports taking AAA fire':'Clear of AAA'); save(); render(); },
-  togglePause(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return; f.paused=!f.paused; save(); render(); },
+  togglePause(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return; f.paused=!f.paused; f.alertMsg=null; save(); render(); },
   setStatus(fid, s){
     const f=state.flights.find(x=>x.id===fid); if(!f)return;
     if(s==='shotdown' && !confirm(f.callsign+' — mark as SHOT DOWN?')) return;
-    f.status=s; logEvent(f.callsign, 'Status → '+statusLabel(s)); save(); render();
+    f.status=s; f.alertMsg=null; logEvent(f.callsign, 'Status → '+statusLabel(s)); save(); render();
     toast(f.callsign+' '+statusLabel(s));
   },
   reactivate(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return;
@@ -1218,6 +1313,7 @@ const app = {
     if(f.stationSec>f.stationMax) f.stationMax=f.stationSec;
     f.aaa=$('#edAaa').value==='yes';
     f.notes=$('#edNotes').value;
+    f.alertMsg=null;                 // editing counts as attending to the flight
     const perFlightTotals={};         // capture edits before any resize
     (f.loadout||[]).forEach((L,i)=>{
       if(perPlaneMode()){ (L.perPlane||[]).forEach((c,pi)=>{ const el=$('#edL'+i+'_'+pi); if(el) L.perPlane[pi]=Math.max(0,parseInt(el.value,10)||0); }); }
@@ -1276,6 +1372,11 @@ const app = {
   setToggle(key,val){ state.tuning[key]=val;
     if(key==='perPlane') logEvent('GM','Ordnance accounting set to '+(val?'PER AIRCRAFT':'PER FLIGHT'));
     save(); render(); },
+  ackAlert(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return;
+    f.alertMsg=null; clearTimeout(_titleT); document.title=BASE_TITLE; save(); render(); },
+  testAlert(){ audioCtx(); playAlertSound('test');
+    if(!audioCtx()) alert('Audio unavailable in this browser.');
+    else toast('Test tone played — if you heard nothing, check system volume'); },
 
   // strike guns
   reSuggestGun(){ const f=state.flights.find(x=>x.id===ui._strikeGun.fid); const G=f.guns[ui._strikeGun.gi];
@@ -1395,7 +1496,8 @@ function checkWinchester(f){
   const gunLeft=(f.guns||[]).some(G=>G.state!=='winchester');
   if(!ordLeft && !gunLeft && f.status==='onstation'){
     logEvent(f.callsign,'WINCHESTER — all ordnance expended');
-    toast(f.callsign+' is WINCHESTER');
+    if(T().alertWinchester) fireAlert(f,'winchester', f.callsign+' is WINCHESTER');
+    else toast(f.callsign+' is WINCHESTER');
   }
 }
 
@@ -1407,25 +1509,59 @@ function downloadFile(name, content, mime){
 function dstamp(){ const d=new Date(); return d.toISOString().slice(0,16).replace(/[-:T]/g,''); }
 
 //=================================================================
-//  TICK — decrement timers; update only clock spans (no full re-render)
+//  TICK — WALL-CLOCK based. Browsers throttle setInterval in background
+//  tabs (Arma is in front), so we must never assume one tick == one second;
+//  we advance by the real elapsed time and fire alerts on threshold crossings.
 //=================================================================
+function updateClockEl(f, secs){
+  const el=document.getElementById('clk-'+f.id);
+  if(el){ el.textContent=fmtClock(secs);
+    el.className='clock '+(secs<=60?'crit':secs<=180?'warn':''); }
+}
+let _lastTick = Date.now();
 setInterval(()=>{
-  let dirty=false, expired=[];
+  const now = Date.now();
+  let dt = Math.floor((now - _lastTick)/1000);
+  if(dt < 1) return;                    // sub-second: nothing to do
+  if(dt > 6*3600) dt = 6*3600;          // guard against machine sleep/suspend
+  _lastTick += dt*1000;                 // carry the sub-second remainder
+
+  const t = T();
+  let dirty=false, needRender=false;
   state.flights.forEach(f=>{
-    if(f.status==='inbound' && f.etaSec>0){ f.etaSec--; dirty=true;
-      const el=document.getElementById('clk-'+f.id); if(el){ el.textContent=fmtClock(f.etaSec);
-        el.className='clock '+(f.etaSec<=60?'crit':f.etaSec<=180?'warn':''); }
-      if(f.etaSec===0){ f.status='checkin';
-        logEvent(f.callsign,'Arrived overhead — awaiting FAC check-in ('+fmtClock(f.stationSec)+' playtime)'); expired.push(f); }
-    } else if((f.status==='onstation'||f.status==='checkin') && !f.paused && f.stationSec>0){ f.stationSec--; dirty=true;
-      const el=document.getElementById('clk-'+f.id); if(el){ el.textContent=fmtClock(f.stationSec);
-        el.className='clock '+(f.stationSec<=60?'crit':f.stationSec<=180?'warn':''); }
+    if(f.status==='inbound' && f.etaSec>0){
+      f.etaSec = Math.max(0, f.etaSec - dt); dirty=true;
+      updateClockEl(f, f.etaSec);
+      if(f.etaSec===0){
+        f.status='checkin';
+        logEvent(f.callsign,'Arrived overhead — awaiting FAC check-in ('+fmtClock(f.stationSec)+' playtime)');
+        if(t.alertArrival) fireAlert(f,'arrival', f.callsign+' overhead — awaiting check-in');
+        needRender=true;
+      }
+    } else if((f.status==='onstation'||f.status==='checkin') && !f.paused && f.stationSec>0){
+      const prev = f.stationSec;
+      f.stationSec = Math.max(0, f.stationSec - dt); dirty=true;
+      updateClockEl(f, f.stationSec);
       const el2=document.getElementById('sta-'+f.id); if(el2) el2.textContent=fmtClock(f.stationSec);
-      if(f.stationSec===0){ logEvent(f.callsign,'STATION TIME EXPIRED — bingo, RTB'); expired.push(f); }
+
+      const w1=(t.bingoWarn1||0)*60, w2=(t.bingoWarn2||0)*60;
+      const crossed=(thr)=> thr>0 && prev>thr && f.stationSec<=thr;
+      let firedBingo=false;
+      if(crossed(w2)){                                   // urgent warning wins if both cross
+        fireAlert(f,'bingo2', f.callsign+' — '+t.bingoWarn2+' MIN PLAYTIME'); firedBingo=true; needRender=true;
+      }
+      if(!firedBingo && w1>w2 && crossed(w1)){
+        fireAlert(f,'bingo1', f.callsign+' — '+t.bingoWarn1+' min playtime remaining'); needRender=true;
+      }
+      if(f.stationSec===0){
+        logEvent(f.callsign,'STATION TIME EXPIRED — bingo, RTB');
+        if(t.alertExpired) fireAlert(f,'expired', f.callsign+' BINGO — RTB');
+        needRender=true;
+      }
     }
   });
-  if(expired.length){ if(ui.tab==='ops') render(); }
-  if(dirty) { clearTimeout(window._svT); window._svT=setTimeout(save, 3000); }
+  if(needRender && ui.tab==='ops') render();
+  if(dirty){ clearTimeout(window._svT); window._svT=setTimeout(save, 3000); }
 }, 1000);
 
 //=================================================================
