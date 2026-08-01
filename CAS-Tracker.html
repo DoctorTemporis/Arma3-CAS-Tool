@@ -58,6 +58,7 @@
   .tag.vnaf{color:#e0b060;border-color:#5a4620}
   .tag.aaa{color:#e8846f;border-color:#5a2a20;background:#2a1712}
   .tag.ctl{color:#7fd6c8;border-color:#2c5751}
+  .tag.cfg{color:#c8b8e0;border-color:#4a3a5a;background:#1e1826}
   .status{font-weight:700;letter-spacing:.4px;font-size:12px;padding:2px 8px;border-radius:3px}
   .s-available{color:#b8b8b8;background:#242424}
   .s-inbound{color:#f0c874;background:#3a2f12}
@@ -215,41 +216,63 @@ const DEFAULT_WEAPONS = {
 };
 
 // airframes: role strike=goes in the on-call pool; fac=marker/recon.
-// vnaf:true => can appear as South Vietnamese AF (lower skill).
-// crew for info. loadout: full-load per FLIGHT-of-one; qty aggregated across a section at generation.
+// vnaf:true => can appear as South Vietnamese AF (lower skill). weight = spawn commonness.
+// loadouts: named configs (weight = relative chance); load qty = full load per single aircraft.
 const DEFAULT_AIRFRAMES = [
-  {id:'a1', name:'A-1 Skyraider', type:'FW', role:'strike', vnaf:true, crew:1,
-    load:[{w:'mk82',max:4},{w:'napalm',max:2},{w:'ffar',max:38},{w:'gun20',gun:true}], stn:[18,35]},
-  {id:'a4', name:'A-4 Skyhawk', type:'FW', role:'strike', vnaf:false, crew:1,
-    load:[{w:'snake',max:6},{w:'zuni',max:8},{w:'gun20',gun:true}], stn:[12,25]},
-  {id:'a6', name:'A-6 Intruder', type:'FW', role:'strike', vnaf:false, crew:2,
-    load:[{w:'mk82',max:12},{w:'snake',max:10},{w:'mk83',max:4}], stn:[15,30]},
-  {id:'a7', name:'A-7 Corsair II', type:'FW', role:'strike', vnaf:false, crew:1,
-    load:[{w:'mk82',max:8},{w:'cbu',max:6},{w:'gun20',gun:true}], stn:[15,28]},
-  {id:'f100', name:'F-100 Super Sabre', type:'FW', role:'strike', vnaf:false, crew:1,
-    load:[{w:'mk82',max:4},{w:'napalm',max:2},{w:'ffar',max:19},{w:'gun20',gun:true}], stn:[10,20]},
-  {id:'f105', name:'F-105 Thunderchief', type:'FW', role:'strike', vnaf:false, crew:1,
-    load:[{w:'m117',max:6},{w:'mk82',max:5},{w:'gun20',gun:true}], stn:[8,18]},
-  {id:'f4', name:'F-4 Phantom II', type:'FW', role:'strike', vnaf:false, crew:2,
-    load:[{w:'mk82',max:8},{w:'cbu',max:6},{w:'zuni',max:8},{w:'gunpod',gun:true}], stn:[10,20]},
-  {id:'a37', name:'A-37 Dragonfly', type:'FW', role:'strike', vnaf:true, crew:1,
-    load:[{w:'mk81',max:4},{w:'napalm',max:2},{w:'ffar',max:14},{w:'minigun',gun:true}], stn:[12,24]},
-  {id:'f5', name:'F-5 Freedom Fighter', type:'FW', role:'strike', vnaf:true, crew:1,
-    load:[{w:'mk82',max:4},{w:'ffar',max:19},{w:'gun20',gun:true}], stn:[10,20]},
-  {id:'ov10', name:'OV-10 Bronco', type:'FW', role:'strike', vnaf:false, crew:2,
-    load:[{w:'ffar',max:28},{w:'minigun',gun:true}], stn:[20,45], fac:true},
-  {id:'o2', name:'O-2 Skymaster (FAC)', type:'FW', role:'fac', vnaf:false, crew:1,
-    load:[{w:'ffar',max:14}], stn:[30,60], fac:true},
-  {id:'uh1c', name:'UH-1C Gunship', type:'RW', role:'strike', vnaf:true, crew:4,
-    load:[{w:'hrocket',max:14},{w:'minigun',gun:true},{w:'gl40',max:150}], stn:[15,30]},
-  {id:'uh1d', name:'UH-1D Bushranger', type:'RW', role:'strike', vnaf:true, crew:4,
-    load:[{w:'hrocket',max:14},{w:'minigun',gun:true}], stn:[15,30]},
-  {id:'ah1', name:'AH-1G Cobra', type:'RW', role:'strike', vnaf:false, crew:2,
-    load:[{w:'hrocket',max:38},{w:'minigun',gun:true},{w:'gl40',max:300}], stn:[15,28]},
-  {id:'ach47', name:'ACH-47 "Guns-A-Go-Go"', type:'RW', role:'strike', vnaf:false, crew:5,
-    load:[{w:'hrocket',max:38},{w:'gun20',gun:true},{w:'minigun',gun:true},{w:'gl40',max:300}], stn:[12,24]},
-  {id:'oh6', name:'OH-6A Loach (Scout)', type:'RW', role:'strike', vnaf:false, crew:2,
-    load:[{w:'minigun',gun:true},{w:'hrocket',max:7}], stn:[20,40], fac:true}
+  {id:'a1', name:'A-1 Skyraider', type:'FW', role:'strike', vnaf:true, crew:1, weight:2, stn:[18,35], loadouts:[
+    {name:'Strike', weight:2, load:[{w:'mk82',max:6},{w:'m117',max:2},{w:'ffar',max:38},{w:'gun20',gun:true}]},
+    {name:'Sandy (RESCAP)', weight:2, load:[{w:'mk82',max:4},{w:'cbu',max:4},{w:'napalm',max:2},{w:'ffar',max:19},{w:'gun20',gun:true}]},
+    {name:'Nape & Rockets', weight:1, load:[{w:'napalm',max:4},{w:'ffar',max:38},{w:'gun20',gun:true}]} ]},
+  {id:'a4', name:'A-4 Skyhawk', type:'FW', role:'strike', vnaf:false, crew:1, weight:2, stn:[12,25], loadouts:[
+    {name:'Snake & Nape', load:[{w:'snake',max:4},{w:'napalm',max:2},{w:'gun20',gun:true}]},
+    {name:'Iron & Zuni', load:[{w:'mk82',max:6},{w:'zuni',max:8},{w:'gun20',gun:true}]},
+    {name:'CBU', weight:1, load:[{w:'cbu',max:6},{w:'gun20',gun:true}]} ]},
+  {id:'a6', name:'A-6 Intruder', type:'FW', role:'strike', vnaf:false, crew:2, weight:1, stn:[15,30], loadouts:[
+    {name:'Heavy Iron', load:[{w:'mk82',max:18}]},
+    {name:'Snake', load:[{w:'snake',max:12},{w:'mk83',max:4}]} ]},
+  {id:'a7', name:'A-7 Corsair II', type:'FW', role:'strike', vnaf:false, crew:1, weight:1, stn:[15,28], loadouts:[
+    {name:'Iron', load:[{w:'mk82',max:8},{w:'gun20',gun:true}]},
+    {name:'CBU', load:[{w:'cbu',max:8},{w:'gun20',gun:true}]} ]},
+  {id:'f100', name:'F-100 Super Sabre', type:'FW', role:'strike', vnaf:false, crew:1, weight:2, stn:[10,20], loadouts:[
+    {name:'Snake & Nape', weight:2, load:[{w:'snake',max:2},{w:'napalm',max:2},{w:'gun20',gun:true}]},
+    {name:'Iron', load:[{w:'mk82',max:4},{w:'gun20',gun:true}]},
+    {name:'Rockets', weight:1, load:[{w:'ffar',max:19},{w:'napalm',max:2},{w:'gun20',gun:true}]} ]},
+  {id:'f105', name:'F-105 Thunderchief', type:'FW', role:'strike', vnaf:false, crew:1, weight:1, stn:[8,18], loadouts:[
+    {name:'Heavy Iron', load:[{w:'m117',max:6},{w:'gun20',gun:true}]},
+    {name:'Mk-82', load:[{w:'mk82',max:5},{w:'gun20',gun:true}]},
+    {name:'CBU', weight:1, load:[{w:'cbu',max:6},{w:'gun20',gun:true}]} ]},
+  {id:'f4', name:'F-4 Phantom II', type:'FW', role:'strike', vnaf:false, crew:2, weight:2, stn:[10,20], loadouts:[
+    {name:'Iron', load:[{w:'mk82',max:8},{w:'gunpod',gun:true}]},
+    {name:'CBU & Zuni', load:[{w:'cbu',max:6},{w:'zuni',max:8},{w:'gunpod',gun:true}]},
+    {name:'Nape', weight:1, load:[{w:'napalm',max:4},{w:'mk82',max:4},{w:'gunpod',gun:true}]} ]},
+  {id:'a37', name:'A-37 Dragonfly', type:'FW', role:'strike', vnaf:true, crew:1, weight:1, stn:[12,24], loadouts:[
+    {name:'Shake & Bake', weight:2, load:[{w:'mk82',max:2},{w:'napalm',max:2},{w:'minigun',gun:true}]},
+    {name:'Rockets', load:[{w:'ffar',max:14},{w:'minigun',gun:true}]},
+    {name:'CBU', weight:1, load:[{w:'cbu',max:4},{w:'minigun',gun:true}]} ]},
+  {id:'f5', name:'F-5 Freedom Fighter', type:'FW', role:'strike', vnaf:true, crew:1, weight:1, stn:[10,20], loadouts:[
+    {name:'Iron', load:[{w:'mk82',max:4},{w:'gun20',gun:true}]},
+    {name:'Snake & Nape', load:[{w:'snake',max:2},{w:'napalm',max:2},{w:'gun20',gun:true}]} ]},
+  {id:'ov10', name:'OV-10 Bronco', type:'FW', role:'strike', vnaf:false, crew:2, weight:1, stn:[20,45], fac:true, loadouts:[
+    {name:'FAC / Marker', weight:2, load:[{w:'ffar',max:14},{w:'minigun',gun:true}]},
+    {name:'Light Strike', load:[{w:'ffar',max:28},{w:'minigun',gun:true}]} ]},
+  {id:'o2', name:'O-2 Skymaster (FAC)', type:'FW', role:'fac', vnaf:false, crew:1, weight:1, stn:[30,60], fac:true, loadouts:[
+    {name:'Marker', load:[{w:'ffar',max:14}]} ]},
+  {id:'uh1c', name:'UH-1C Gunship', type:'RW', role:'strike', vnaf:true, crew:4, weight:3, stn:[15,30], loadouts:[
+    {name:'M21 (Flex Guns)', weight:2, load:[{w:'hrocket',max:14},{w:'minigun',gun:true}]},
+    {name:'Hog (XM3)', load:[{w:'hrocket',max:48},{w:'minigun',gun:true}]},
+    {name:'Heavy Hog', load:[{w:'hrocket',max:38},{w:'gl40',gun:true},{w:'minigun',gun:true}]},
+    {name:'Frog (40mm)', weight:1, load:[{w:'hrocket',max:7},{w:'gl40',gun:true},{w:'minigun',gun:true}]} ]},
+  {id:'uh1d', name:'UH-1D Bushranger', type:'RW', role:'strike', vnaf:true, crew:4, weight:2, stn:[15,30], loadouts:[
+    {name:'Gunship', load:[{w:'hrocket',max:14},{w:'minigun',gun:true}]},
+    {name:'Heavy', load:[{w:'hrocket',max:38},{w:'minigun',gun:true}]} ]},
+  {id:'ah1', name:'AH-1G Cobra', type:'RW', role:'strike', vnaf:false, crew:2, weight:3, stn:[15,28], loadouts:[
+    {name:'Hog (Rockets)', weight:2, load:[{w:'hrocket',max:76},{w:'minigun',gun:true},{w:'gl40',gun:true}]},
+    {name:'Guns', load:[{w:'hrocket',max:14},{w:'minigun',gun:true},{w:'gl40',gun:true}]},
+    {name:'20mm (XM35)', load:[{w:'gun20',gun:true},{w:'hrocket',max:14},{w:'minigun',gun:true}]} ]},
+  {id:'ach47', name:'ACH-47 "Guns-A-Go-Go"', type:'RW', role:'strike', vnaf:false, crew:5, weight:1, stn:[12,24], loadouts:[
+    {name:'Guns-A-Go-Go', load:[{w:'hrocket',max:38},{w:'gun20',gun:true},{w:'minigun',gun:true},{w:'gl40',gun:true}]} ]},
+  {id:'oh6', name:'OH-6A Loach (Scout)', type:'RW', role:'strike', vnaf:false, crew:2, weight:1, stn:[20,40], fac:true, loadouts:[
+    {name:'Scout', load:[{w:'minigun',gun:true},{w:'hrocket',max:7}]} ]}
 ];
 
 //=================================================================
@@ -281,6 +304,18 @@ function load(){
 function migrateState(){
   state.tuning = Object.assign(structuredClone(DEFAULT_TUNING), state.tuning||{});
   if(!state.control) state.control = 'Monkey Mountain';
+  // airframes: single `load` → named `loadouts`. Known default airframes are upgraded to the
+  // new default configs; custom airframes keep their load as a single "Standard" config.
+  const defById = Object.fromEntries(DEFAULT_AIRFRAMES.map(a=>[a.id,a]));
+  (state.library.airframes||[]).forEach(a=>{
+    if(!a.loadouts){
+      const def = defById[a.id];
+      if(def && def.loadouts) a.loadouts = structuredClone(def.loadouts);
+      else a.loadouts = [{name:'Standard', load:a.load||[]}];
+    }
+    if(a.load) delete a.load;
+    if(a.weight==null) a.weight = defById[a.id] ? (defById[a.id].weight||1) : 1;
+  });
   (state.flights||[]).forEach(f=>{
     (f.loadout||[]).forEach(L=>{
       if(!L.perPlane){          // convert flat {count,max} → per-aircraft array
@@ -307,6 +342,8 @@ function pickLoadState(){ const t=T(); const r=Math.random()*100;
   if(r < t.pctFull) return 'full';
   if(r < t.pctFull + t.pctPartial) return 'partial';
   return 'other'; }
+function airframeLoadouts(af){ return (af.loadouts && af.loadouts.length) ? af.loadouts : [{name:'Standard', load:af.load||[]}]; }
+function pickLoadout(af){ return weightedPick(airframeLoadouts(af)); }
 
 //=================================================================
 //  HELPERS
@@ -420,11 +457,12 @@ function genFlight(opts={}){
   const stationMin = clamp(Math.round(base), Math.min(t.stnMin,t.stnMax), Math.max(t.stnMin,t.stnMax));
   const etaMin = rndInt(Math.min(t.etaMin,t.etaMax), Math.max(t.etaMin,t.etaMax));
 
-  // ordnance state: full / partial (may have expended some on a prior tasking)
+  // pick a named loadout configuration (weighted), then fuel/expenditure state
+  const cfg = pickLoadout(af);
   const loadState = pickLoadState();
   const loadout = [];
   let guns = null;
-  (af.load||[]).forEach(item=>{
+  (cfg.load||[]).forEach(item=>{
     const wd = W(item.w);
     if(item.gun){
       const gState = loadState==='full' ? 'full' : (loadState==='partial' ? pick(['full','partial']) : pick(['partial','winchester']));
@@ -449,6 +487,7 @@ function genFlight(opts={}){
     callsign: cs.words,
     flightNo: cs.number,
     airframeId: af.id, airframeName: af.name, type: af.type, fac:!!af.fac,
+    configName: cfg.name,
     numAircraft, operator, skill, control: state.control,
     etaMin, etaSec: etaMin*60,
     stationMin, stationSec: stationMin*60, stationMax: stationMin*60,
@@ -570,7 +609,7 @@ function flightCard(f){
     </span>
   </div><div class="bd">`;
 
-  h += `<div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}</div>`;
+  h += `<div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}${f.configName?` <span class="tag cfg">${esc(f.configName)}</span>`:''}</div>`;
   h += `<div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='VNAF'?' <span class="muted">(local)</span>':''} &nbsp;•&nbsp; declared load: <b>${f.loadState.toUpperCase()}</b></div>`;
   if(onstn) h += `<div class="kv"><b>Station</b> <span id="sta-${f.id}">${fmtClock(f.stationSec)}</span> of ${fmtClock(f.stationMax)} remaining${f.paused?' <span class="tag vnaf">PAUSED</span>':''}</div>`;
   else if(isCheckin) h += `<div class="kv"><b>Overhead</b> holding — awaiting FAC check-in. Playtime <b id="sta-${f.id}">${fmtClock(f.stationSec)}</b> <span class="muted">(burning; not yet cleared hot)</span></div>`;
@@ -627,7 +666,7 @@ function closedCard(f){
     <button class="small" onclick="app.edit(${f.id})">Edit</button>
     <button class="small" onclick="app.reactivate(${f.id})">Re-open</button>
     <button class="small danger" onclick="app.remove(${f.id})">✕</button>
-  </div><div class="bd"><div class="kv"><b>Aircraft</b> ${f.numAircraft}×${esc(f.airframeName)} • ${SKILLS[f.skill].label} • ${f.operator}${f.control?' • 📻 '+esc(f.control):''}</div>
+  </div><div class="bd"><div class="kv"><b>Aircraft</b> ${f.numAircraft}×${esc(f.airframeName)}${f.configName?' ('+esc(f.configName)+')':''} • ${SKILLS[f.skill].label} • ${f.operator}${f.control?' • 📻 '+esc(f.control):''}</div>
   ${f.notes?`<div class="kv"><b>Notes</b> ${esc(f.notes)}</div>`:''}</div></div>`;
 }
 
@@ -664,6 +703,7 @@ function availCard(f){
     ${f.control?`<span class="tag ctl">📻 ${esc(f.control)}</span>`:''}
   </div><div class="bd">
     <div class="kv"><b>Aircraft</b> ${f.numAircraft} × ${esc(f.airframeName)}</div>
+    ${f.configName?`<div class="kv"><b>Config</b> <span class="tag cfg">${esc(f.configName)}</span></div>`:''}
     <div class="kv"><b>Pilot</b> ${SKILLS[f.skill].label}${f.operator==='VNAF'?' (local)':''}</div>
     <div class="etaBox"><span>ARRIVES IN <b>${f.etaMin} MIN</b></span><span>PLAYTIME <b>${f.stationMin} MIN</b></span></div>
     <div class="kv"><b>Load state</b> ${f.loadState.toUpperCase()}</div>
@@ -767,7 +807,8 @@ function viewLibrary(){
       <button class="small primary" onclick="app.editAirframe(null)">+ Add airframe</button></div>
       <div class="bd">`;
   state.library.airframes.forEach(a=>{
-    const loads = (a.load||[]).map(l=> l.gun?('['+W(l.w).name+']'):(W(l.w).name+'×'+l.max)).join(', ');
+    const cfgs = airframeLoadouts(a);
+    const loads = `${cfgs.length} config${cfgs.length>1?'s':''}: ${cfgs.map(c=>c.name).join(', ')}`;
     h += `<div class="libitem">
       <b>${esc(a.name)}</b>
       <span class="tag ${a.type==='FW'?'fw':'rw'}">${a.type}</span>
@@ -1005,18 +1046,33 @@ function openEdit(fid){
      <button class="primary" onclick="app.saveEdit(${f.id})">Save</button></div>`);
 }
 
-// airframe editor
-function openAirframeEditor(id){
+// airframe editor — manages multiple named loadout configurations
+// useExisting: re-render from the working copy (ui._afEdit) instead of re-cloning from the library
+function openAirframeEditor(id, useExisting){
   const isNew = !id;
-  const a = isNew ? {id:'af'+Date.now(), name:'', type:'FW', role:'strike', vnaf:false, fac:false, crew:1, weight:1, load:[], stn:[12,25]}
-                  : structuredClone(state.library.airframes.find(x=>x.id===id));
+  const a = (useExisting && ui._afEdit) ? ui._afEdit
+          : (isNew ? {id:'af'+Date.now(), name:'', type:'FW', role:'strike', vnaf:false, fac:false, crew:1, weight:1,
+                     loadouts:[{name:'Standard', weight:1, load:[]}], stn:[12,25]}
+                  : structuredClone(state.library.airframes.find(x=>x.id===id)));
+  if(!a.loadouts || !a.loadouts.length) a.loadouts=[{name:'Standard', weight:1, load:a.load||[]}];
   const wOpts = Object.entries(state.library.weapons).map(([wid,w])=>[wid,w.name]);
   const opt=(v,cur,lbl)=>`<option value="${v}" ${v===cur?'selected':''}>${lbl}</option>`;
-  let rows = (a.load||[]).map((l,i)=>`<div class="flex" style="margin:4px 0">
-      <select id="afW${i}" style="flex:1">${wOpts.map(([wid,nm])=>opt(wid,l.w,nm)).join('')}</select>
-      <label style="margin:0"><input type="checkbox" id="afGun${i}" ${l.gun?'checked':''}> gun</label>
-      <input type="number" id="afMax${i}" value="${l.max||0}" style="width:60px" placeholder="qty">
-      <button class="small danger" onclick="app._afDelRow(${i})">✕</button></div>`).join('');
+  const cfgHtml = a.loadouts.map((cfg,ci)=>{
+    const rows = (cfg.load||[]).map((l,ri)=>`<div class="flex" style="margin:4px 0">
+        <select id="afcW${ci}_${ri}" style="flex:1">${wOpts.map(([wid,nm])=>opt(wid,l.w,nm)).join('')}</select>
+        <label style="margin:0"><input type="checkbox" id="afcG${ci}_${ri}" ${l.gun?'checked':''}> gun</label>
+        <input type="number" id="afcM${ci}_${ri}" value="${l.max||0}" style="width:58px" placeholder="qty" title="full qty per aircraft">
+        <button class="small danger" onclick="app._afDelRow(${ci},${ri})">✕</button></div>`).join('');
+    return `<div class="card" style="margin:6px 0"><div class="bd" style="padding:8px">
+      <div class="flex" style="gap:8px">
+        <input id="afcName${ci}" value="${esc(cfg.name||'')}" placeholder="config name" style="flex:1">
+        <label style="margin:0;color:var(--muted);font-size:12px">weight <input type="number" min="0" id="afcWt${ci}" value="${cfg.weight==null?1:cfg.weight}" style="width:48px"></label>
+        <button class="small" onclick="app._afAddRow(${ci})">+ station</button>
+        <button class="small danger" onclick="app._afDelConfig(${ci})" title="delete config">✕ config</button>
+      </div>
+      <div style="margin-top:6px">${rows||'<div class="muted" style="font-size:12px">No stations yet.</div>'}</div>
+    </div></div>`;
+  }).join('');
   ui._afEdit = a;
   showModal(`<div class="hd"><h3>${isNew?'Add':'Edit'} Airframe</h3><button class="small" onclick="app.closeModal()">✕</button></div>
    <div class="bd">
@@ -1033,10 +1089,10 @@ function openAirframeEditor(id){
       <label style="margin:0"><input type="checkbox" id="afVnaf" ${a.vnaf?'checked':''}> VNAF-capable (local)</label>
       <label style="margin:0"><input type="checkbox" id="afFac" ${a.fac?'checked':''}> Can mark / FAC</label>
     </div>
-    <hr><div class="flex"><b class="muted" style="font-size:12px">LOADOUT (per single aircraft)</b><span class="sp"></span>
-      <button class="small primary" onclick="app._afAddRow()">+ station</button></div>
-    <div id="afRows">${rows||'<div class="muted">No stations yet.</div>'}</div>
-    <div class="hint">Tick "gun" for coarse (full/partial/winchester) weapons; otherwise qty is the full count per aircraft.</div>
+    <hr><div class="flex"><b class="muted" style="font-size:12px">LOADOUT CONFIGURATIONS (per single aircraft)</b><span class="sp"></span>
+      <button class="small primary" onclick="app._afAddConfig()">+ configuration</button></div>
+    <div id="afConfigs">${cfgHtml}</div>
+    <div class="hint">Each config is a weighted variant (e.g. "Strike", "Sandy"). Higher weight = generated more often. Tick "gun" for coarse (full/partial/winchester) weapons; otherwise qty is the full count per aircraft.</div>
    </div>
    <div class="ft"><button onclick="app.closeModal()">Cancel</button>
      <button class="primary" onclick="app.saveAirframe('${a.id}',${isNew})">Save airframe</button></div>`);
@@ -1239,8 +1295,14 @@ const app = {
   // library
   editAirframe(id){ openAirframeEditor(id); },
   editWeapon(id){ openWeaponEditor(id); },
-  _afAddRow(){ ui._afEdit.load = collectAfRows(); ui._afEdit.load.push({w:Object.keys(state.library.weapons)[0],max:1,gun:false}); openAirframeEditor(ui._afEdit.id==='' ? null : (state.library.airframes.find(x=>x.id===ui._afEdit.id)?ui._afEdit.id:null)); reopenAf(); },
-  _afDelRow(i){ ui._afEdit.load = collectAfRows(); ui._afEdit.load.splice(i,1); reopenAf(); },
+  _afAddConfig(){ ui._afEdit.loadouts = collectAfLoadouts(); ui._afEdit.loadouts.push({name:'New config', weight:1, load:[]}); reopenAf(); },
+  _afDelConfig(ci){ ui._afEdit.loadouts = collectAfLoadouts();
+    ui._afEdit.loadouts.splice(ci,1);
+    if(!ui._afEdit.loadouts.length) ui._afEdit.loadouts=[{name:'Standard', weight:1, load:[]}];
+    reopenAf(); },
+  _afAddRow(ci){ ui._afEdit.loadouts = collectAfLoadouts();
+    ui._afEdit.loadouts[ci].load.push({w:Object.keys(state.library.weapons)[0],max:1,gun:false}); reopenAf(); },
+  _afDelRow(ci,ri){ ui._afEdit.loadouts = collectAfLoadouts(); ui._afEdit.loadouts[ci].load.splice(ri,1); reopenAf(); },
   saveAirframe(id, isNew){
     const a = ui._afEdit;
     a.name=$('#afName').value.trim()||'Unnamed';
@@ -1249,7 +1311,8 @@ const app = {
     const wv=parseInt($('#afWeight').value,10); a.weight = isNaN(wv)?1:Math.max(0,wv);
     a.stn=[parseInt($('#afStnA').value,10)||10, parseInt($('#afStnB').value,10)||25];
     a.vnaf=$('#afVnaf').checked; a.fac=$('#afFac').checked;
-    a.load=collectAfRows();
+    a.loadouts=collectAfLoadouts(); if(!a.loadouts.length) a.loadouts=[{name:'Standard', weight:1, load:[]}];
+    delete a.load;
     if(isNew){ state.library.airframes.push(a); }
     else{ const i=state.library.airframes.findIndex(x=>x.id===id); if(i>=0) state.library.airframes[i]=a; }
     save(); closeModal(); render(); toast('Airframe saved');
@@ -1297,16 +1360,35 @@ const app = {
 function curStrike(){ if(!ui._strike) return {}; const f=state.flights.find(x=>x.id===ui._strike.fid);
   return {f, L: f?f.loadout[ui._strike.idx]:null}; }
 function curLoad(){ return curStrike().L; }
-function collectAfRows(){
-  const rows=[]; let i=0;
-  while($('#afW'+i)){ rows.push({ w:$('#afW'+i).value, gun:$('#afGun'+i).checked, max:parseInt($('#afMax'+i).value,10)||0 }); i++; }
-  return rows;
+function collectAfLoadouts(){    // read every config + its stations back out of the editor DOM
+  const loadouts=[]; let ci=0;
+  while(document.getElementById('afcName'+ci)){
+    const name=document.getElementById('afcName'+ci).value.trim()||'Config';
+    const wtEl=document.getElementById('afcWt'+ci); const wv=wtEl?parseInt(wtEl.value,10):1;
+    const load=[]; let ri=0;
+    while(document.getElementById('afcW'+ci+'_'+ri)){
+      load.push({ w:document.getElementById('afcW'+ci+'_'+ri).value,
+        gun:document.getElementById('afcG'+ci+'_'+ri).checked,
+        max:parseInt(document.getElementById('afcM'+ci+'_'+ri).value,10)||0 });
+      ri++;
+    }
+    loadouts.push({ name, weight:isNaN(wv)?1:Math.max(0,wv), load });
+    ci++;
+  }
+  return loadouts;
 }
-function reopenAf(){ // re-render the airframe editor preserving current edits
-  const a=ui._afEdit; const id=state.library.airframes.find(x=>x.id===a.id)?a.id:null;
-  // stash current header fields
-  a.name=$('#afName')?$('#afName').value:a.name;
-  openAirframeEditor(id); // uses ui._afEdit
+function reopenAf(){ // re-render the airframe editor preserving current header edits (loadouts already stashed by caller)
+  const a=ui._afEdit;
+  if($('#afName')) a.name=$('#afName').value;
+  if($('#afType')) a.type=$('#afType').value;
+  if($('#afRole')) a.role=$('#afRole').value;
+  if($('#afCrew')) a.crew=parseInt($('#afCrew').value,10)||1;
+  if($('#afWeight')){ const wv=parseInt($('#afWeight').value,10); a.weight=isNaN(wv)?1:Math.max(0,wv); }
+  if($('#afStnA')&&$('#afStnB')) a.stn=[parseInt($('#afStnA').value,10)||10, parseInt($('#afStnB').value,10)||25];
+  if($('#afVnaf')) a.vnaf=$('#afVnaf').checked;
+  if($('#afFac')) a.fac=$('#afFac').checked;
+  const id=state.library.airframes.find(x=>x.id===a.id)?a.id:null;
+  openAirframeEditor(id, true); // re-render from the working copy
 }
 function checkWinchester(f){
   const ordLeft=(f.loadout||[]).some(L=>ordTotal(L)>0);
