@@ -1653,13 +1653,21 @@ function renderStrikeModal(){
   const perLine = L.perPlane.map((c,pi)=>'A'+(pi+1)+':'+c).join('  ');
   const withStock = L.perPlane.map((c,pi)=>({pi,c})).filter(x=>x.c>0);
   const maxEach = withStock.length?Math.max(...withStock.map(x=>x.c)):0;
+  // "employ all your remaining X" is a common FAC call — one click, each aircraft's own stock
+  const allBtn = `<button class="small" onclick="app.employAll()"
+      title="Set every releasing aircraft to its own full remaining stock">⇊ Employ all remaining</button>`;
   const controls = s.mode==='plane' ? `
     <div class="flex" style="margin-top:8px;gap:8px;flex-wrap:wrap">
       <label style="margin:0;color:var(--muted);font-size:12px">Set each selected to
         <input type="number" id="strkQty" min="0" max="${maxEach}" value="${s.qtyEach}" style="width:56px" oninput="app.clampInput(this)"></label>
       <button class="small" onclick="app.applyEach()">Apply</button>
+      ${allBtn}
       <span class="muted" style="font-size:12px">— tick which aircraft release</span>
-    </div>` : '';
+    </div>` : `
+    <div class="flex" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+      ${allBtn}
+      <span class="muted" style="font-size:12px">— flight-pooled: one release for the whole flight</span>
+    </div>`;
   showModal(`<div class="hd"><h3>Weapon Release — ${esc(f.callsign)} ${esc(f.flightNo)}</h3>
     <button class="small" onclick="app.closeModal()">✕</button></div>
    <div class="bd">
@@ -2104,6 +2112,11 @@ const app = {
     const q=document.getElementById('strkQty'); const each=q?Math.max(0,parseInt(q.value,10)||0):ui._strike.qtyEach;
     ui._strike.qtyEach=each;
     ui._strike.rows.forEach(r=>{ if(r.active!==false) r.qty=clamp(each,0,r.stock); });
+    renderStrikeModal(); },
+  // each releasing aircraft dumps its own remaining stock (7 and 12 stay 7 and 12).
+  // Deliberately respects the tick boxes: an aircraft the GM excluded stays excluded.
+  employAll(){ captureStrike();
+    ui._strike.rows.forEach(r=>{ if(r.pi==null || r.active!==false) r.qty=r.stock; });
     renderStrikeModal(); },
   rerollOutcomes(){ captureStrike();
     const {f,L}=curStrike(); if(!f)return;
