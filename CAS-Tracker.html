@@ -406,6 +406,10 @@ function migrateState(){
   });
   state.library.roster.forEach(u=>{ if(u.sorties==null) u.sorties=0; if(u.active==null) u.active=true; });
   if(!state.library.quips) state.library.quips = structuredClone(DEFAULT_QUIPS);
+  else {   // additive: pick up newly-shipped quips without disturbing the GM's own
+    const have = new Set(state.library.quips.map(q=>q.text));
+    DEFAULT_QUIPS.forEach(q=>{ if(!have.has(q.text)) state.library.quips.push(structuredClone(q)); });
+  }
   // radio vocabulary — seed once, then additively top up with anything newly shipped
   if(!state.library.voices) state.library.voices = structuredClone(DEFAULT_VOICES);
   Object.entries(DEFAULT_VOICES).forEach(([k,v])=>{ if(!state.library.voices[k]) state.library.voices[k]=structuredClone(v); });
@@ -842,23 +846,59 @@ const DEFAULT_CALL_TEMPLATES = {
 
 // ChelteNam moments — comedy interjections (D6). cat: ordnance | nav | direction | general
 const DEFAULT_QUIPS = [
+  // ---- SCAF: West Country, agricultural, cheerfully unhelpful ----
   {cat:'ordnance', side:'SCAF', text:"Well, I got some big bombs an' some whooshy stuff, mebbe rockets."},
   {cat:'ordnance', side:'SCAF', text:"Hold on, let I look... there's summat under the wing, definitely."},
   {cat:'ordnance', side:'SCAF', text:"Us has got the loud ones an' the very loud ones."},
   {cat:'ordnance', side:'SCAF', text:"Two of the fat 'uns an' a load o' the pointy 'uns."},
+  {cat:'ordnance', side:'SCAF', text:"There's a big 'un an' three little 'uns. Or four little 'uns. I'll count 'em on the way down."},
+  {cat:'ordnance', side:'SCAF', text:"Us swapped summat over at the airfield, so 'tis a surprise for all of us."},
+  {cat:'ordnance', side:'SCAF', text:"Whatever were left after last week, I reckon."},
   {cat:'nav', side:'SCAF', text:"Can you tell I where that is relative to my uncle Jeb's goat farm?"},
   {cat:'nav', side:'SCAF', text:"Is that near the big tree? There's a big tree round 'ere somewhere."},
   {cat:'nav', side:'SCAF', text:"Which one's the river an' which one's the road? They'm both wiggly."},
+  {cat:'nav', side:'SCAF', text:"Is that up by where the cows get out?"},
+  {cat:'nav', side:'SCAF', text:"Right — an' is that afore or after the crossroads wi' the funny signpost?"},
+  {cat:'nav', side:'SCAF', text:"I knows that field! My cousin got married in 'un."},
   {cat:'direction', side:'SCAF', text:"Which way is east again? Oh — way the sun comes up."},
   {cat:'direction', side:'SCAF', text:"North's the top one, ennit?"},
   {cat:'direction', side:'SCAF', text:"I'll come in from... the way I'm already pointin', how's that?"},
+  {cat:'direction', side:'SCAF', text:"Us'll come in the way the wind's blowin'. Saves the fuel."},
+  {cat:'direction', side:'SCAF', text:"Left or right? Only I gets they two mixed up."},
   {cat:'general', side:'SCAF', text:"Sorry, say again — I were lookin' at a tractor."},
   {cat:'general', side:'SCAF', text:"Say again? Had the radio on the wrong knob."},
   {cat:'general', side:'SCAF', text:"Roight. An' what's a 'target', exactly?"},
   {cat:'general', side:'SCAF', text:"Us'll have a go, but I be due back for milkin'."},
-  {cat:'general', side:'US', text:"Uh, say again? I was thinkin' about lunch."},
+  {cat:'general', side:'SCAF', text:"Beg pardon — I had a bit o' pasty in me headset."},
+  {cat:'general', side:'SCAF', text:"Us'll do 'un, but I i'nt flyin' over Dorset again. They'm strange over there."},
+  {cat:'general', side:'SCAF', text:"Say again, my observer were shoutin' about a buzzard."},
+  {cat:'general', side:'SCAF', text:"Us'll be there dreckly."},
+  {cat:'general', side:'SCAF', text:"Roight you are. What's the hurry, they bain't goin' nowhere."},
+
+  // ---- US: bored, overconfident, and baffled by ChelteNam ----
+  {cat:'ordnance', side:'US', text:"We got the usual. Bombs, and some other bombs. You want 'em all at once?"},
+  {cat:'ordnance', side:'US', text:"Full rack and a bad attitude. Say the word."},
+  {cat:'ordnance', side:'US', text:"Checking... yeah, we still got everything we took off with. Sadly."},
+  {cat:'ordnance', side:'US', text:"Armament panel says we're loaded. Armament panel has lied before."},
+  {cat:'ordnance', side:'US', text:"We're carryin' whatever the loaders felt like this morning."},
+  {cat:'nav', side:'US', text:"Say that place name again? Slower. And maybe spell it."},
+  {cat:'nav', side:'US', text:"I got a village, a river, and about four hundred trees. Narrow it down."},
+  {cat:'nav', side:'US', text:"Is that the one with the funny name, or the other one with the funny name?"},
+  {cat:'nav', side:'US', text:"Copy. And which of these identical green fields is yours?"},
+  {cat:'nav', side:'US', text:"Everything down there looks like a postcard nobody asked for."},
   {cat:'direction', side:'US', text:"Which one's east? ...I'm kidding. Mostly."},
-  {cat:'general', side:'US', text:"You want that hit now, or after my coffee?"}
+  {cat:'direction', side:'US', text:"From the north — your north, or my north?"},
+  {cat:'direction', side:'US', text:"I'll come in whichever way keeps the sun out of my eyes."},
+  {cat:'direction', side:'US', text:"Say again the run-in heading, I was admiring the scenery."},
+  {cat:'general', side:'US', text:"Uh, say again? I was thinkin' about lunch."},
+  {cat:'general', side:'US', text:"You want that hit now, or after my coffee?"},
+  {cat:'general', side:'US', text:"Copy all. None of that made any sense, but copy all."},
+  {cat:'general', side:'US', text:"Roger. For the record, this is my third sortie today."},
+  {cat:'general', side:'US', text:"Say again — one of your guys was singing on the net."},
+  {cat:'general', side:'US', text:"Standing by. Try to make it worth the fuel."},
+  {cat:'general', side:'US', text:"Understood. My wingman's asleep, give me a second."},
+  {cat:'general', side:'US', text:"Affirm. Whoever named these villages needs a talking to."},
+  {cat:'general', side:'US', text:"You know the local boys fly with the canopy open? Animals."}
 ];
 
 // the radio vocabulary lives in the library so it is all GM-editable and persisted;
