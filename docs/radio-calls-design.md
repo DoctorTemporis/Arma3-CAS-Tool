@@ -92,8 +92,11 @@ greyed for context since that's the *player's* to say:
 5. OFF       "Off to the west."
 ```
 
-- **Direction in / out are GM-settable** (cardinal dropdowns) since the FAC passes them.
-  Default: random ingress with a roughly opposite egress; remembered per flight between runs.
+- **Directions are read-aloud placeholders, not app state.** `{IN}` and `{OUT}` render as
+  `<direction>`, highlighted in the card, and the GM says the actual heading from the talk-on.
+  *(Revised after a practice session: setting headings in the app during strike ops was itself
+  admin load, which is the opposite of what this tool exists to do. Any `<…>` in a template is
+  highlighted the same way, so custom placeholders work too.)*
 - **Abort code** available as a step-3 alternative for waving the run off.
 - Step 4 wording follows the actual weapon employed (bombs / rockets / guns away).
 

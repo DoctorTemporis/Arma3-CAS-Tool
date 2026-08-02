@@ -76,6 +76,7 @@
   .rstep.fac{opacity:.75}
   .rnum{flex:none;width:20px;height:20px;border-radius:50%;background:#243024;color:var(--amber2);
     font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:3px}
+  .ph{color:var(--amber2);background:#3a2f12;border-radius:3px;padding:0 4px;font-style:italic}
   .rcall.prev{font-size:13px;color:#9fb894;margin-top:4px;padding:4px 8px;background:#0c110b;
     border-left:2px solid var(--line);border-radius:3px}
   .libitem.voicesel{background:#1e271d;border-radius:4px}
@@ -429,8 +430,7 @@ function migrateState(){
   (state.flights||[]).forEach(f=>{
     if(!f.voice) f.voice = assignVoice(f.operator, f.rosterId ? (state.library.roster||[]).find(u=>u.id===f.rosterId) : null);
     if(!f.abortCode) f.abortCode = pick(libAbort());
-    if(!f.runIn){ const i=rndInt(0,CARDINALS.length-1);
-      f.runIn=CARDINALS[i]; f.runOut=CARDINALS[(i+8)%CARDINALS.length]; }
+    delete f.runIn; delete f.runOut;   // directions are spoken placeholders now, not stored
   });
   // airframes: single `load` → named `loadouts`. Known default airframes are upgraded to the
   // new default configs; custom airframes keep their load as a single "Standard" config.
@@ -694,7 +694,6 @@ function genFlight(opts={}){
   });
 
   const cs = unit ? {words:unit.callsign, number:(unit.flightNo||spokenTwoDigit())} : makeCallsign();
-  const runHdg = rndInt(0, CARDINALS.length-1);
   return {
     id: state.seq++,
     callsign: cs.words,
@@ -703,8 +702,6 @@ function genFlight(opts={}){
     configName: cfg.name,
     rosterId: unit?unit.id:null, elite: unit?!!unit.elite:false, unitNotes: unit?(unit.notes||''):'',
     voice: assignVoice(operator, unit), abortCode: pick(libAbort()),
-    // ingress heading with a roughly opposite egress; GM can change either
-    runIn: CARDINALS[runHdg], runOut: CARDINALS[(runHdg+8)%CARDINALS.length],
     numAircraft, operator, skill, control: state.control, fac: state.fac,
     etaMin, etaSec: etaMin*60,
     stationMin, stationSec: stationMin*60, stationMax: stationMin*60,
@@ -890,11 +887,6 @@ function spokenCount(n){
     return SMALL_WORDS[h]+' hundred'+(r?' '+spokenCount(r):''); }
   return String(n);
 }
-const CARDINAL_SPOKEN = {N:'north', NNE:'north-north-east', NE:'north-east', ENE:'east-north-east',
-  E:'east', ESE:'east-south-east', SE:'south-east', SSE:'south-south-east', S:'south',
-  SSW:'south-south-west', SW:'south-west', WSW:'west-south-west', W:'west',
-  WNW:'west-north-west', NW:'north-west', NNW:'north-north-west'};
-function cardSpoken(c){ return CARDINAL_SPOKEN[c] || String(c||'').toLowerCase(); }
 // tidy up sentence casing so templates read naturally however they're assembled
 function tidySpoken(s){
   return s.replace(/\s+/g,' ').trim()
@@ -954,8 +946,10 @@ function renderCall(f, id){
           .replace(/{ORD}/g, ordnanceSpoken(f))
           .replace(/{PLAY}/g, spokenDigits(mins))
           .replace(/{ABORT}/g, f.abortCode||'—')
-          .replace(/{IN}/g, cardSpoken(f.runIn||'S'))
-          .replace(/{OUT}/g, cardSpoken(f.runOut||'N'))
+          // directions stay as spoken placeholders — they change constantly in play and
+          // making the GM set them mid-strike would add exactly the load this tool removes
+          .replace(/{IN}/g, '<direction>')
+          .replace(/{OUT}/g, '<direction>')
           .replace(/{AWAY}/g, awayWord(f)));
 }
 // control agency reading the whole availability list to the FAC
@@ -1402,7 +1396,7 @@ function previewFlight(voiceKey){
   const af=state.library.airframes.find(a=>a.id==='a1')||state.library.airframes[0]||{};
   return { id:-1, callsign:'SAMPLE', flightNo:'FOUR TWO', control:state.control,
     airframeId:af.id, airframeName:af.name, numAircraft:2, operator:V.side||'US',
-    voice:voiceKey, abortCode:'CIDER', runIn:'S', runOut:'N', stationSec:25*60,
+    voice:voiceKey, abortCode:'CIDER', stationSec:25*60,
     configName:'Strike', status:'onstation',
     loadout:[{w:'mk82',cat:'bomb',planeMax:3,perPlane:[3,3]},{w:'napalm',cat:'napalm',planeMax:1,perPlane:[1,1]}],
     guns:[{w:'gun20',name:'20mm Cannon',state:'full'}] };
@@ -1787,14 +1781,14 @@ function defaultCallFor(f){
   }
   return 'bingo';
 }
-function radioLine(txt){ return `<div class="rcall">${esc(txt)}</div>`; }
+// highlight <placeholders> so the GM can see at a glance where to supply a word themselves
+function hilitePlaceholders(escaped){ return escaped.replace(/&lt;([^&]+?)&gt;/g,'<span class="ph">&lt;$1&gt;</span>'); }
+function radioLine(txt){ return `<div class="rcall">${hilitePlaceholders(esc(txt))}</div>`; }
 function renderRadioBody(f, id){
   const q = ui._radio && ui._radio.quip;
   if(id==='run'){
-    const sel=(cur,which)=>`<select onchange="app.radioHdg(${f.id},'${which}',this.value)">
-      ${CARDINALS.map(c=>`<option ${c===cur?'selected':''}>${c}</option>`).join('')}</select>`;
     return `<div class="flex" style="gap:10px;margin-bottom:8px;font-size:12px;color:var(--muted)">
-        <span>In from ${sel(f.runIn,'runIn')}</span><span>Off to ${sel(f.runOut,'runOut')}</span>
+        <span>Say the directions yourself as they happen — no need to set them here.</span>
         <span class="sp"></span><span>abort word <b class="mono" style="color:var(--amber2)">${esc(f.abortCode||'')}</b></span></div>
       <div class="rstep"><span class="rnum">1</span>${radioLine(renderCall(f,'run_in'))}</div>
       <div class="rstep"><span class="rnum">2</span>${radioLine(renderCall(f,'run_5'))}</div>
@@ -2197,10 +2191,6 @@ const app = {
     const f=state.flights.find(x=>x.id===fid); if(!f)return;
     ui._radio.quip = cat ? pickQuip(f, cat) : null;
     openRadioPanel(fid, ui._radio.call);
-  },
-  radioHdg(fid, which, val){
-    const f=state.flights.find(x=>x.id===fid); if(!f)return;
-    f[which]=val; save(); openRadioPanel(fid, ui._radio.call);
   },
   ackAlert(fid){ const f=state.flights.find(x=>x.id===fid); if(!f)return;
     f.alertMsg=null; clearTimeout(_titleT); document.title=BASE_TITLE; save(); render(); },
