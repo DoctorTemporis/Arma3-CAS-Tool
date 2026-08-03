@@ -76,6 +76,15 @@
   .rstep.fac{opacity:.75}
   .rnum{flex:none;width:20px;height:20px;border-radius:50%;background:#243024;color:var(--amber2);
     font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:3px}
+  .pfcard{border-color:#5a2a20}
+  .pfcard .hd{background:#2a1712;border-radius:6px 6px 0 0}
+  .pfcard .hd h3{color:#e8846f}
+  .pfbtn{width:100%;padding:12px;font-size:15px;font-weight:800;letter-spacing:1.5px;
+    background:#3a1a12;border:1px solid var(--red);color:#ff9d84;border-radius:5px}
+  .pfbtn:hover{background:#4d2116;border-color:#e8846f;color:#ffbfae}
+  .grouphd{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+    color:var(--amber2);margin:14px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+  .grouphd:first-child{margin-top:0}
   .ph{color:var(--amber2);background:#3a2f12;border-radius:3px;padding:0 4px;font-style:italic}
   .rcall.prev{font-size:13px;color:#9fb894;margin-top:4px;padding:4px 8px;background:#0c110b;
     border-left:2px solid var(--line);border-radius:3px}
@@ -232,6 +241,7 @@ const DEFAULT_TUNING = {
   rosterChance:25,                 // % chance an option is a known recurring unit
   scafChance:35,                   // % chance a SCAF-capable flight is local
   acMin:1, acMode:2, acMax:3,      // aircraft per flight (min / most-common / max)
+  pfMin:4, pfMode:6, pfMax:10,     // Prairie Fire: flights scrambled in an emergency call
   pctFull:45, pctPartial:35,       // % full / % partial load (remainder = 'other')
   // pilot skill (base hit-chance %, before weapon/weather)
   skRookie:38, skRegular:55, skVeteran:74, skAce:90,
@@ -479,6 +489,10 @@ function pickLoadout(af){ return weightedPick(airframeLoadouts(af)); }
 // may a known recurring unit turn up? Never duplicates one already in play.
 function pickRosterUnit(opts){
   const t=T();
+  if(opts.forceUnitId){    // GM asked for this unit by name — no chance roll, no filters
+    return (state.library.roster||[]).find(x=>x.id===opts.forceUnitId) || null;
+  }
+  if(opts.noRoster) return null;                                // Prairie Fire: anonymous flights only
   if(opts.airframeId) return null;                              // explicit airframe request bypasses the roster
   if(!(Math.random()*100 < (t.rosterChance||0))) return null;
   const busy = new Set(state.flights
@@ -1096,13 +1110,63 @@ function renderFac(){
 }
 
 // ---- OPS BOARD ----
+const OPS_SORTS = [
+  ['status',   'Status — check-in / on station / en route'],
+  ['attention','Needs attention first'],
+  ['time',     'Time remaining (soonest first)'],
+  ['ordnance', 'Ordnance remaining (most first)'],
+  ['callsign', 'Callsign A–Z'],
+  ['type',     'Type — fixed-wing / rotary']
+];
+// seconds until this flight's next meaningful event
+function opsTimeKey(f){ return f.status==='inbound' ? f.etaSec : f.stationSec; }
+function opsOrdTotal(f){ return (f.loadout||[]).reduce((s,L)=>s+ordTotal(L),0); }
+// lower = more urgent. Answers "what do I deal with next?"
+function opsAttention(f){
+  if(f.alertMsg) return 0;                                    // unacknowledged alert
+  if(f.status==='checkin') return 1;                          // overhead, burning fuel, waiting on you
+  if(f.status==='onstation' && f.stationSec<=300) return 2;   // about to go bingo
+  if(f.aaa) return 3;                                         // taking fire
+  if(f.status==='onstation') return 4;
+  return 5;                                                   // en route
+}
+function opsGroups(active){
+  const mode = state.opsSort || 'status';
+  const byTime = (a,b)=>opsTimeKey(a)-opsTimeKey(b);
+  const only = s => active.filter(f=>f.status===s).sort(byTime);
+  if(mode==='status'){
+    return [{title:'Awaiting Check-In', list:only('checkin')},
+            {title:'On Station',        list:only('onstation')},
+            {title:'En Route',          list:only('inbound')}].filter(g=>g.list.length);
+  }
+  if(mode==='type'){
+    return [{title:'Fixed-wing', list:active.filter(f=>f.type==='FW').sort(byTime)},
+            {title:'Rotary',     list:active.filter(f=>f.type==='RW').sort(byTime)}].filter(g=>g.list.length);
+  }
+  const list=[...active];
+  if(mode==='attention') list.sort((a,b)=>opsAttention(a)-opsAttention(b) || byTime(a,b));
+  else if(mode==='ordnance') list.sort((a,b)=>opsOrdTotal(b)-opsOrdTotal(a) || byTime(a,b));
+  else if(mode==='callsign') list.sort((a,b)=>(a.callsign+' '+a.flightNo).localeCompare(b.callsign+' '+b.flightNo));
+  else list.sort(byTime);
+  return [{title:null, list}];
+}
 function viewOps(){
   const active = state.flights.filter(f=>['inbound','checkin','onstation'].includes(f.status));
   const closed = state.flights.filter(f=>['departed','rtb','shotdown','kia','aborted','diverted'].includes(f.status));
   let h = '<div class="row"><div class="col" style="flex:2">';
-  h += '<h2 style="margin-bottom:10px">Active Flights <span class="muted">('+active.length+')</span></h2>';
+  h += `<div class="flex" style="margin-bottom:10px">
+      <h2>Active Flights <span class="muted">(${active.length})</span></h2>
+      <span class="sp"></span>
+      <label style="margin:0;font-size:12px;color:var(--muted)">Sort
+        <select id="opsSort" onchange="app.setOpsSort(this.value)">
+          ${OPS_SORTS.map(([k,l])=>`<option value="${k}"${(state.opsSort||'status')===k?' selected':''}>${l}</option>`).join('')}
+        </select></label>
+    </div>`;
   if(!active.length) h += '<div class="empty">No flights inbound or on station. Use <b>REQUEST AIR</b> to generate on-call CAS.</div>';
-  else h += active.map(flightCard).join('');
+  else opsGroups(active).forEach(g=>{
+    if(g.title) h += `<div class="grouphd">${g.title} <span class="muted">(${g.list.length})</span></div>`;
+    h += g.list.map(flightCard).join('');
+  });
   h += '</div><div class="col">';
   h += '<h2 style="margin-bottom:10px">Completed / Off-Station</h2>';
   if(!closed.length) h += '<div class="empty">None yet.</div>';
@@ -1206,6 +1270,13 @@ function statusLabel(s){ return {available:'AVAILABLE',inbound:'EN ROUTE',checki
   departed:'DEPARTED',rtb:'RTB',shotdown:'SHOT DOWN',kia:'PILOT KIA',aborted:'ABORTED',diverted:'DIVERTED'}[s]||s.toUpperCase(); }
 
 // ---- REQUEST AIR ----
+// known units not retired and not already somewhere in the current fight
+function availableRosterUnits(){
+  const busy = new Set(state.flights
+    .filter(f=>['available','inbound','checkin','onstation'].includes(f.status))
+    .map(f=>f.rosterId).filter(Boolean));
+  return (state.library.roster||[]).filter(u=>u.active!==false && !busy.has(u.id));
+}
 function viewRequest(){
   const avail = state.flights.filter(f=>f.status==='available');
   let h = `<div class="card"><div class="hd"><h2>Request Immediate CAS</h2></div><div class="bd">
@@ -1220,6 +1291,37 @@ function viewRequest(){
         <select id="genScaf"><option value="yes">Yes</option><option value="no">US only</option></select></div>
       <div><button class="primary" onclick="app.doGenerate()">⟳ Generate Options</button></div>
     </div>
+  </div></div>`;
+
+  // ---- request a specific known unit ----
+  const freeUnits = availableRosterUnits();
+  h += `<div class="card"><div class="hd"><h3>Request a Known Unit</h3>
+      <span class="muted" style="font-size:12px">ask for a specific callsign by name</span></div><div class="bd">`;
+  if(!freeUnits.length){
+    h += `<div class="muted" style="font-size:13px">No known units available — they are either already in play or retired. See <b>LIBRARY → Known Units</b>.</div>`;
+  } else {
+    h += `<div class="row" style="align-items:flex-end">
+      <div style="flex:1;min-width:240px"><label>Unit</label>
+        <select id="reqUnit" style="width:100%">
+          ${freeUnits.map(u=>{
+            const af=state.library.airframes.find(a=>a.id===u.airframeId);
+            return `<option value="${u.id}">${esc(u.callsign)}${u.flightNo?' '+esc(u.flightNo):''} — ${u.numAircraft||1}× ${esc(af?af.name:'?')} (${esc(u.operator||'US')})</option>`;
+          }).join('')}
+        </select></div>
+      <div><button class="primary" onclick="app.requestUnit()">★ Add to options</button></div>
+    </div>
+    <div class="hint">Their identity, airframe, crew and section size are fixed; fuel state, loadout and expenditure are still rolled fresh for this appearance.</div>`;
+  }
+  h += `</div></div>`;
+
+  // ---- Prairie Fire ----
+  const t=T(); const pfLo=Math.min(t.pfMin,t.pfMax), pfHi=Math.max(t.pfMin,t.pfMax);
+  h += `<div class="card pfcard"><div class="hd"><h3>🔥 PRAIRIE FIRE</h3>
+      <span class="muted" style="font-size:12px">emergency — scramble everything</span></div><div class="bd">
+    <p class="muted" style="margin:0 0 10px">Generates <b>${pfLo}–${pfHi}</b> flights (most often ${t.pfMode}), fixed-wing and rotary,
+      and assigns them straight to <b>${esc(state.fac)}</b> as inbound — no picking, no known units, everything that could come, comes.
+      Counts are tunable in <b>TUNING → Flight Composition</b>.</p>
+    <button class="pfbtn" onclick="app.prairieFire()">🔥 DECLARE PRAIRIE FIRE</button>
   </div></div>`;
 
   h += `<div class="flex" style="margin:14px 0 10px">
@@ -1331,7 +1433,10 @@ function viewTuning(){
     + sliderRow('acMode','Median aircraft (most common)',1,6,1,'')
     + sliderRow('acMax','Max aircraft per flight',1,6,1,'')
     + sliderRow('pctFull','Load state: % full',0,100,1,'%')
-    + sliderRow('pctPartial','Load state: % partial (rest = other)',0,100,1,'%'));
+    + sliderRow('pctPartial','Load state: % partial (rest = other)',0,100,1,'%')
+    + sliderRow('pfMin','Prairie Fire: min flights',1,20,1,'')
+    + sliderRow('pfMode','Prairie Fire: median flights',1,20,1,'')
+    + sliderRow('pfMax','Prairie Fire: max flights',1,20,1,''));
   h += '</div><div class="col">';
   h += tuneGroup('Pilot Skill — base hit chance',
     sliderRow('skRookie','Rookie',10,95,1,'%') + sliderRow('skRegular','Regular',10,95,1,'%')
@@ -1989,22 +2094,23 @@ const app = {
   setTune(key,val,unit){
     val = Number(val);
     // keep min/max pairs from crossing — visually clamp the dragged slider to its partner
-    const asMin={etaMin:'etaMax', stnMin:'stnMax', lowFuelMin:'lowFuelMax', acMin:'acMax'};
-    const asMax={etaMax:'etaMin', stnMax:'stnMin', lowFuelMax:'lowFuelMin', acMax:'acMin'};
+    const asMin={etaMin:'etaMax', stnMin:'stnMax', lowFuelMin:'lowFuelMax', acMin:'acMax', pfMin:'pfMax'};
+    const asMax={etaMax:'etaMin', stnMax:'stnMin', lowFuelMax:'lowFuelMin', acMax:'acMin', pfMax:'pfMin'};
     if(asMin[key] && val > state.tuning[asMin[key]]) val = state.tuning[asMin[key]];
     if(asMax[key] && val < state.tuning[asMax[key]]) val = state.tuning[asMax[key]];
     state.tuning[key] = val;
-    // keep the median aircraft count within [min,max]
-    if(key==='acMin'||key==='acMax'){
-      const lo=Math.min(state.tuning.acMin,state.tuning.acMax), hi=Math.max(state.tuning.acMin,state.tuning.acMax);
-      const m=clamp(state.tuning.acMode,lo,hi);
-      if(m!==state.tuning.acMode){ state.tuning.acMode=m;
-        const s2=document.getElementById('ts_acMode'); if(s2)s2.value=m;
-        const l2=document.getElementById('tv_acMode'); if(l2)l2.textContent=m; }
-    } else if(key==='acMode'){
-      const lo=Math.min(state.tuning.acMin,state.tuning.acMax), hi=Math.max(state.tuning.acMin,state.tuning.acMax);
-      val=clamp(val,lo,hi); state.tuning.acMode=val;
-    }
+    // keep each median inside its own [min,max]
+    [['ac','acMin','acMode','acMax'],['pf','pfMin','pfMode','pfMax']].forEach(([,kMin,kMode,kMax])=>{
+      const lo=Math.min(state.tuning[kMin],state.tuning[kMax]), hi=Math.max(state.tuning[kMin],state.tuning[kMax]);
+      if(key===kMin||key===kMax){
+        const m=clamp(state.tuning[kMode],lo,hi);
+        if(m!==state.tuning[kMode]){ state.tuning[kMode]=m;
+          const s2=document.getElementById('ts_'+kMode); if(s2)s2.value=m;
+          const l2=document.getElementById('tv_'+kMode); if(l2)l2.textContent=m; }
+      } else if(key===kMode){
+        val=clamp(val,lo,hi); state.tuning[kMode]=val;
+      }
+    });
     const sl=document.getElementById('ts_'+key); if(sl && Number(sl.value)!==val) sl.value=val;
     const el=document.getElementById('tv_'+key); if(el) el.textContent = val+(unit||'');
     const ro=document.getElementById('tuneReadout'); if(ro) ro.textContent = tuneReadout();
@@ -2019,6 +2125,46 @@ const app = {
     const type = $('#genType').value;
     const allowScaf = $('#genScaf').value==='yes';
     generateOptions(n, {type: type==='any'?null:type, allowScaf});
+  },
+  setOpsSort(v){ state.opsSort=v; save(); render(); },
+  // ask for a specific known unit by name — no chance roll involved
+  requestUnit(){
+    const sel=$('#reqUnit'); if(!sel) return;
+    const u=(state.library.roster||[]).find(x=>x.id===sel.value); if(!u) return;
+    const f=genFlight({forceUnitId:u.id});
+    state.flights.push(f);
+    logEvent(state.control, `${u.callsign} requested by name — ${f.numAircraft}×${f.airframeName}, ETA ${f.etaMin}min, ${f.stationMin}min playtime`);
+    save(); render(); toast(u.callsign+' added to options');
+  },
+  // PRAIRIE FIRE — emergency scramble. Anonymous flights only, assigned straight to the FAC.
+  prairieFire(){
+    const t=T();
+    const lo=Math.min(t.pfMin,t.pfMax), hi=Math.max(t.pfMin,t.pfMax);
+    const mode=clamp(t.pfMode==null?Math.round((lo+hi)/2):t.pfMode, lo, hi);
+    if(!confirm(`PRAIRIE FIRE\n\nScramble every available flight to ${state.fac}?\n`
+      +`This generates ${lo}–${hi} flights and assigns them immediately — no picking.`)) return;
+    const n=clamp(Math.round(triangular(lo,mode,hi)), lo, hi);
+    const made=[];
+    for(let i=0;i<n;i++){
+      const f=genFlight({noRoster:true});
+      f.status='inbound';
+      state.flights.push(f); made.push(f);
+    }
+    // an emergency scramble should never turn up all one type
+    if(n>=2 && made.every(f=>f.type===made[0].type)){
+      const want = made[0].type==='FW' ? 'RW' : 'FW';
+      const swap = genFlight({noRoster:true, type:want});
+      swap.status='inbound';
+      const last=made[made.length-1];
+      state.flights[state.flights.indexOf(last)] = swap;
+      made[made.length-1]=swap;
+    }
+    logEvent(state.control, `🔥 PRAIRIE FIRE — ${n} flight(s) scrambled to ${state.fac}`);
+    made.forEach(f=>logEvent(f.callsign,
+      `Scrambled on Prairie Fire — ${f.numAircraft}×${f.airframeName}, ETA ${Math.ceil(f.etaSec/60)}min, ${f.stationMin}min playtime`));
+    if(t.alertsOn) fireAlert(null,'expired',`PRAIRIE FIRE — ${n} flights inbound`);
+    ui.tab='ops'; save(); render();
+    toast(`PRAIRIE FIRE — ${n} flights inbound`);
   },
   reroll(fid){
     const i = state.flights.findIndex(f=>f.id===fid); if(i<0) return;
